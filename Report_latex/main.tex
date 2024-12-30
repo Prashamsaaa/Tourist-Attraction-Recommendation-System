@@ -1,0 +1,63 @@
+%Khwopa college of Engineering Latex Template Prepared by Mukesh Kumar Pokharel for Project Proposal as references.
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[utf8]{inputenc}
+\usepackage[left=1.2in,right=1in,top=1in,bottom=1in,headheight=6pt, a4paper]{geometry} % Adjusted top margin
+
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage[hidelinks]{hyperref}
+\usepackage{cite}
+\usepackage{ragged2e}
+\usepackage{titlesec}
+\usepackage{float}
+\usepackage{longtable}
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+\usepackage{lipsum}
+
+%\titleformat{\subsubsubsection}[runin]{\normalfont\normalsize\bfseries}{\thesubsubsubsection}{1em}{}
+%\titlespacing*{\subsubsubsection}{0pt}{3.25ex plus 1ex minus .2ex}{1.5ex plus .2ex}
+%\newcommand{\subsubsubsection}[1]{\paragraph{#1}\mbox{}}
+\titleformat{\chapter}[display]
+    {\centering\normalfont\large\bfseries}{\MakeUppercase{\chaptertitlename} \thechapter}{2pt}{\Large}
+\titlespacing{\chapter}{0pt}{0pt}{4pt}
+\titleformat{\section}
+  {\normalfont\large\bfseries}{\thesection}{1em}{}
+
+\titleformat{\subsection}
+  {\normalfont\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\titleformat{\subsubsection}
+  {\normalfont\normalsize\bfseries}{\thesubsubsection}{1em}{}
+  \renewcommand{\baselinestretch}{1.5}
+
+\begin{document}
+    \noindent
+    \include{title}
+    \include{coa}
+    \include{intro}
+    \include{chapter/chapter_1}
+    \include{chapter/chapter_2}
+    \include{chapter/chapter_3}
+    \include{chapter/chapter_4}
+    \include{chapter/chapter_5}
+    \include{chapter/chapter_6}
+    \include{chapter/chapter_7}
+    \include{chapter/chapter8}
+    \include{chapter/chapter9}
+    \include{chapter/chapter10}
+
+   
+    %\printbibliography[title={References}] % Print bibliography with the title "References"
+    %\bibliographystyle{IEEEtran}
+    %\bibliography{ref}
+    %\addcontentsline{toc}{section}{Bibliography}
+    \newpage
+      \renewcommand{\bibname}{REFERENCES}
+      \bibliographystyle{unsrt}
+        \bibliography{ref} % Replace "ref" with your bibliography file name
+       \addcontentsline{toc}{chapter}{REFERENCES}
+       
+\end{document}
