@@ -4,23 +4,3 @@ venvy/
 CountryChunks/
 Data/
 Dataset/
-# LaTeX temporary files
-**/*.aux
-**/*.log
-**/*.out
-**/*.toc
-**/*.lof
-**/*.lot
-**/*.fls
-**/*.fdb_latexmk
-**/*.synctex.gz
-**/*.synctex(busy)
-**/*.bbl
-**/*.blg
-**/*.run.xml
-**/*.bcf
-**/*.nav
-**/*.snm
-**/*.vrb
-**/_minted*
-**/*.pyg

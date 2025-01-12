@@ -4,7 +4,7 @@ import csv
 
 async def main():
      # Input CSV with places and URLs
-    input_file = 'google_maps_urls1.csv'
+    input_file = 'valid_urls.csv'
 
     # List to hold tuples of place names and URLs
     places_urls = []
