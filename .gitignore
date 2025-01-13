@@ -3,5 +3,4 @@ venvy/
 .venv/
 
 CountryChunks/
-Data/
-
+Raw/
