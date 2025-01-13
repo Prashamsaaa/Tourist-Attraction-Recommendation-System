@@ -1,6 +1,3 @@
 venv/
 venvy/
-
-CountryChunks/
-Data/
-Dataset/
+.venv/
