@@ -1,104 +1,101 @@
+import csv
 import os
-import pandas as pd
-import wikipedia
-import warnings
-from transformers import pipeline
+import requests
+from bs4 import BeautifulSoup
+import time
 
-# Suppress the GuessedAtParserWarning
-warnings.filterwarnings("ignore", category=UserWarning, module="wikipedia")
-
-# Initialize text generation model (Hugging Face pipeline)
-generator = pipeline('text-generation', model='gpt2')
-
-# Function to get Wikipedia summary or specific sections
-def get_wikipedia_summary(place_name, location, types):
+def get_description_from_url(url):
+    """
+    Scrapes the description of a place from the given URL.
+    :param url: URL to scrape the description from.
+    :return: A description of the place if found, else None.
+    """
     try:
-        # Search for the page using the place name, location, and type
-        search_query = f"{place_name} {types} in {location}"
-        print(f"Searching for: {search_query}")
+        # Send GET request to the URL
+        response = requests.get(url)
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # Find the description from the page content (customize based on actual HTML structure)
+        description_tag = soup.find('meta', {'name': 'description'})
         
-        # Perform a search query on Wikipedia to find matching pages
-        search_results = wikipedia.search(search_query)
+        if description_tag:
+            description = description_tag.get('content', None)
+        else:
+            # For some websites, description may be in a specific paragraph or div
+            description = soup.find('p')  # Adjust this to target the correct element if needed
+            description = description.get_text() if description else None
 
-        if not search_results:
-            print(f"No results found for {search_query}")
-            return "No results found in Wikipedia for this location."
-
-        # Attempt to retrieve the page summary of the first result
-        page = wikipedia.page(search_results[0])
-
-        # Try fetching specific sections if available
-        sections = ["History", "Attractions", "Significance", "Culture", "Geography", "Tourism"]
-        for section in sections:
-            try:
-                section_content = page.section(section)
-                if section_content:
-                    print(f"Found section: {section}")
-                    return section_content[:600]  # Limit to first 600 characters of section
-            except Exception as e:
-                print(f"Error fetching section {section}: {e}")
-                pass  # Continue if a section is not found
-
-        # Fallback to full summary if no section found
-        print(f"Returning full summary for {place_name}")
-        return page.summary[:600]  # Limit to first 600 characters of the summary
-    
-    except wikipedia.exceptions.DisambiguationError as e:
-        print(f"Disambiguation error for {place_name}: {e.options[:5]}")
-        return f"Multiple results found. Try specifying the place more clearly. Options: {e.options[:5]}"
-    except wikipedia.exceptions.PageError:
-        print(f"Page error for {place_name}")
-        return "No Wikipedia page found for this location."
+        return description
     except Exception as e:
-        print(f"Error with Wikipedia fetch for {place_name}: {str(e)}")
-        return f"Error: {str(e)}"
+        print(f"Error scraping {url}: {e}")
+        return None
 
-# Function to generate a detailed description, using Wikipedia first, then AI generation as fallback
-def generate_actual_description(place_name, location, types):
-    wikipedia_description = get_wikipedia_summary(place_name, location, types)
-    if wikipedia_description and not wikipedia_description.startswith("Multiple results found"):
-        print(f"Using Wikipedia description for {place_name}")
-        return wikipedia_description  # Return Wikipedia description if available
-    
-    # Fallback to AI-based description generation if Wikipedia summary is not found
-    print(f"Using AI-generated description for {place_name}")
-    prompt = (f"Provide a detailed, informative, and engaging description of the place '{place_name}', a {types} in {location}. "
-              "Describe its historical significance, cultural importance, key attractions, famous landmarks, "
-              "natural beauty, any famous events or people associated with it, and its impact on the local community. "
-              "Provide a well-rounded perspective on the location that would be informative to a global audience.")
-    
-    # Generate a longer description with GPT-2
-    response = generator(prompt, max_length=300, num_return_sequences=1, truncation=True)
-    return response[0]['generated_text']
+def process_csv(input_file, found_file, not_found_file, save_interval=5):
+    """
+    Reads a CSV file, fetches descriptions by scraping URLs, and writes results to separate files.
+    Saves progress after every 'save_interval' places.
+    :param input_file: Path to the input CSV file.
+    :param found_file: Path to the output file for places with descriptions.
+    :param not_found_file: Path to the output file for places without descriptions.
+    :param save_interval: Number of rows to process before saving progress.
+    """
+    # Load existing progress if files already exist
+    processed_ids = set()
+    if os.path.exists(found_file):
+        with open(found_file, mode='r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            processed_ids.update(row["id"] for row in reader)
 
-# Function to process the CSV file in chunks
-def process_large_csv(input_csv, output_csv, chunk_size=5):
-    # Check if the output CSV exists
-    file_exists = os.path.isfile(output_csv)
+    if os.path.exists(not_found_file):
+        with open(not_found_file, mode='r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            processed_ids.update(row["id"] for row in reader)
 
-    # Process the input CSV in chunks
-    for chunk in pd.read_csv(input_csv, chunksize=chunk_size):
-        print(f"Processing chunk with {len(chunk)} rows...")
+    with open(input_file, mode='r', encoding='utf-8') as infile, \
+         open(found_file, mode='a', encoding='utf-8', newline='') as found_outfile, \
+         open(not_found_file, mode='a', encoding='utf-8', newline='') as not_found_outfile:
+        
+        reader = csv.DictReader(infile)
+        found_writer = csv.DictWriter(found_outfile, fieldnames=reader.fieldnames + ["description"])
+        not_found_writer = csv.DictWriter(not_found_outfile, fieldnames=reader.fieldnames)
+        
+        # Write headers if files are new
+        if os.stat(found_file).st_size == 0:
+            found_writer.writeheader()
+        if os.stat(not_found_file).st_size == 0:
+            not_found_writer.writeheader()
+        
+        count = 0
+        for row in reader:
+            if row["id"] in processed_ids:
+                continue  # Skip already processed rows
 
-        # Convert all column names to lowercase
-        chunk.columns = chunk.columns.str.lower()
+            url = row["url"]  # URL column from your CSV
+            print(f"Fetching description for: {url}")
+            
+            description = get_description_from_url(url)
+            
+            if description:
+                row["description"] = description
+                found_writer.writerow(row)
+            else:
+                not_found_writer.writerow(row)
 
-        # Generate descriptions for each row in the chunk
-        chunk['description'] = chunk.apply(
-            lambda row: generate_actual_description(row['name'], row['address'], row['types']), axis=1
-        )
+            count += 1
+            processed_ids.add(row["id"])
 
-        # Append the chunk with descriptions to the output CSV
-        chunk.to_csv(output_csv, mode='a', index=False, header=not file_exists)
+            # Save progress every 'save_interval' rows
+            if count % save_interval == 0:
+                print(f"Saved progress after processing {count} places.")
+                # Save progress after every save_interval
+                found_outfile.flush()
+                not_found_outfile.flush()
 
-        # After writing, set file_exists to True to prevent writing headers on subsequent chunks
-        file_exists = True
+        print("Processing complete!")
 
-    print(f"Descriptions added to '{output_csv}'.")
+# Example Usage
+input_csv = "Data/FinalDataset/attractions_with_links.csv"       # Input file path with links
+found_csv = "Data/FinalDataset/places_with_description.csv"  # Output file for found descriptions
+not_found_csv = "Data/FinalDataset/places_without_description.csv"  # Output file for not found
 
-# Input and output file paths
-input_csv = "FinalDataset/attractions_final.csv"  # Replace with the path to your input CSV file
-output_csv = "FinalDataset/places_with_descriptions.csv"  # Replace with the path to your output CSV file
-
-# Process the CSV file and generate descriptions
-process_large_csv(input_csv, output_csv)
+process_csv(input_csv, found_csv, not_found_csv, save_interval=5)
