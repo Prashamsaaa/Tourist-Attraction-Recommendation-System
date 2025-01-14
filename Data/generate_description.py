@@ -1,101 +1,157 @@
-import csv
-import os
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import time
+import random
+import logging
+import os
+import re
 
-def get_description_from_url(url):
-    """
-    Scrapes the description of a place from the given URL.
-    :param url: URL to scrape the description from.
-    :return: A description of the place if found, else None.
-    """
-    try:
-        # Send GET request to the URL
-        response = requests.get(url)
-        soup = BeautifulSoup(response.content, "html.parser")
-
-        # Find the description from the page content (customize based on actual HTML structure)
-        description_tag = soup.find('meta', {'name': 'description'})
+def setup_logging():
+    log_dir = 'logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
         
-        if description_tag:
-            description = description_tag.get('content', None)
-        else:
-            # For some websites, description may be in a specific paragraph or div
-            description = soup.find('p')  # Adjust this to target the correct element if needed
-            description = description.get_text() if description else None
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(f'logs/scraping_{time.strftime("%Y%m%d_%H%M%S")}.log'),
+            logging.StreamHandler()
+        ]
+    )
 
-        return description
-    except Exception as e:
-        print(f"Error scraping {url}: {e}")
+class PlaceScraper:
+    def __init__(self):
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5'
+        }
+        self.session = requests.Session()
+
+    def get_description_from_wikipedia(self, name: str) -> str:
+        """Get description from Wikipedia based on the place name."""
+        try:
+            search_query = f"{name} site:en.wikipedia.org"
+            search_url = f"https://www.google.com/search?q={requests.utils.quote(search_query)}"
+            response = self.session.get(search_url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+            link = soup.find('a', href=re.compile('^/url\?q=https://en.wikipedia.org/wiki/'))
+            
+            if link:
+                wikipedia_url = link['href'].split('q=')[1]
+                wikipedia_response = requests.get(wikipedia_url, headers=self.headers)
+                wikipedia_soup = BeautifulSoup(wikipedia_response.text, 'html.parser')
+
+                # Extract description from the first paragraph
+                paragraphs = wikipedia_soup.find_all('p')
+                description = ""
+                for para in paragraphs:
+                    description += para.get_text()
+                    if len(description) > 200:  # Ensure it's long enough to be a valid description
+                        break
+                
+                return description.strip()
+        except Exception as e:
+            logging.error(f"Error getting description from Wikipedia: {str(e)}")
         return None
 
-def process_csv(input_file, found_file, not_found_file, save_interval=5):
-    """
-    Reads a CSV file, fetches descriptions by scraping URLs, and writes results to separate files.
-    Saves progress after every 'save_interval' places.
-    :param input_file: Path to the input CSV file.
-    :param found_file: Path to the output file for places with descriptions.
-    :param not_found_file: Path to the output file for places without descriptions.
-    :param save_interval: Number of rows to process before saving progress.
-    """
-    # Load existing progress if files already exist
-    processed_ids = set()
-    if os.path.exists(found_file):
-        with open(found_file, mode='r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            processed_ids.update(row["id"] for row in reader)
+    def get_description(self, name: str) -> dict:
+        """Get description from Wikipedia."""
+        try:
+            time.sleep(random.uniform(2, 4))
+            result = {'description': None, 'website': None}
 
-    if os.path.exists(not_found_file):
-        with open(not_found_file, mode='r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            processed_ids.update(row["id"] for row in reader)
-
-    with open(input_file, mode='r', encoding='utf-8') as infile, \
-         open(found_file, mode='a', encoding='utf-8', newline='') as found_outfile, \
-         open(not_found_file, mode='a', encoding='utf-8', newline='') as not_found_outfile:
-        
-        reader = csv.DictReader(infile)
-        found_writer = csv.DictWriter(found_outfile, fieldnames=reader.fieldnames + ["description"])
-        not_found_writer = csv.DictWriter(not_found_outfile, fieldnames=reader.fieldnames)
-        
-        # Write headers if files are new
-        if os.stat(found_file).st_size == 0:
-            found_writer.writeheader()
-        if os.stat(not_found_file).st_size == 0:
-            not_found_writer.writeheader()
-        
-        count = 0
-        for row in reader:
-            if row["id"] in processed_ids:
-                continue  # Skip already processed rows
-
-            url = row["url"]  # URL column from your CSV
-            print(f"Fetching description for: {url}")
-            
-            description = get_description_from_url(url)
-            
+            # Try Wikipedia first
+            description = self.get_description_from_wikipedia(name)
             if description:
-                row["description"] = description
-                found_writer.writerow(row)
-            else:
-                not_found_writer.writerow(row)
+                result['description'] = description
+                result['website'] = "Wikipedia"
 
-            count += 1
-            processed_ids.add(row["id"])
+            return result
 
-            # Save progress every 'save_interval' rows
-            if count % save_interval == 0:
-                print(f"Saved progress after processing {count} places.")
-                # Save progress after every save_interval
-                found_outfile.flush()
-                not_found_outfile.flush()
+        except Exception as e:
+            logging.error(f"Error scraping {name}: {str(e)}")
+            return {'description': None, 'website': None}
 
-        print("Processing complete!")
+def process_attractions(input_file: str, output_file: str, no_description_file: str):
+    """Process the attractions CSV file and filter out places with no description"""
+    try:
+        # Read input file
+        logging.info(f"Reading input file: {input_file}")
+        df = pd.read_csv(input_file)
+        original_count = len(df)
+        logging.info(f"Found {original_count} entries to process")
+        
+        # Initialize scraper
+        scraper = PlaceScraper()
+        
+        # Add new columns if they don't exist
+        if 'description' not in df.columns:
+            df['description'] = None
+        if 'website' not in df.columns:
+            df['website'] = None
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        os.makedirs(os.path.dirname(no_description_file), exist_ok=True)
+        
+        # Prepare output files for descriptions and no descriptions
+        df_no_description = pd.DataFrame(columns=df.columns)
+        
+        # Process each place
+        for index, row in df.iterrows():
+            try:
+                logging.info(f"Processing {index + 1}/{original_count}: {row['name']}")
+                
+                # Only scrape if we don't have a description yet
+                if pd.isna(df.at[index, 'description']) or df.at[index, 'description'] == '':
+                    result = scraper.get_description(row['name'])
+                    
+                    # Update dataframe with results
+                    if result['description']:
+                        df.at[index, 'description'] = result['description']
+                        df.at[index, 'website'] = result['website']
+                    else:
+                        # Append rows with no description to a separate dataframe
+                        df_no_description = pd.concat([df_no_description, df.iloc[[index]]], ignore_index=True)
+                
+                # Save progress every 5 entries
+                if (index + 1) % 5 == 0:
+                    df.to_csv(output_file, index=False, encoding='utf-8')
+                    logging.info(f"Progress saved: {index + 1}/{original_count} entries processed")
+                
+            except Exception as e:
+                logging.error(f"Error processing row {index}: {str(e)}")
+                continue
+        
+        # Save final CSV with descriptions
+        df.to_csv(output_file, index=False, encoding='utf-8')
+        logging.info(f"Descriptions saved to {output_file}")
+        
+        # Save CSV for places without descriptions
+        df_no_description.to_csv(no_description_file, index=False, encoding='utf-8')
+        logging.info(f"Rows without descriptions saved to {no_description_file}")
+        
+        # Log completion statistics
+        final_descriptions = df['description'].notna().sum()
+        logging.info(f"Processing complete! Added descriptions for {final_descriptions} out of {original_count} places")
+        
+    except Exception as e:
+        logging.error(f"Fatal error: {str(e)}")
+        raise
 
-# Example Usage
-input_csv = "Data/FinalDataset/attractions_with_links.csv"       # Input file path with links
-found_csv = "Data/FinalDataset/places_with_description.csv"  # Output file for found descriptions
-not_found_csv = "Data/FinalDataset/places_without_description.csv"  # Output file for not found
-
-process_csv(input_csv, found_csv, not_found_csv, save_interval=5)
+if __name__ == "__main__":
+    # Set up logging
+    setup_logging()
+    
+    # Define file paths
+    input_file = "FinalDataset/attractions_without_description.csv"
+    output_file = "FinalDataset/enriched_attractions.csv"
+    no_description_file = "FinalDataset/no_description_attractions.csv"
+    
+    # Process the file
+    process_attractions(input_file, output_file, no_description_file)
