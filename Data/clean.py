@@ -1,89 +1,72 @@
-import pandas as pd
-import re
+import csv
+import requests
 
-def clean_attractions_data(input_file, clean_output_file, uncleaned_output_file):
-    """
-    Clean the attractions dataset and save both cleaned and uncleaned data separately.
-    
-    Parameters:
-    input_file (str): Path to the input CSV file
-    clean_output_file (str): Path to save the cleaned CSV file
-    uncleaned_output_file (str): Path to save the uncleaned/removed entries
-    """
-    # Read the CSV file
-    df = pd.read_csv(input_file)
-    
-    # Function to check if a description is valid
-    def is_valid_description(desc):
-        if pd.isna(desc) or not isinstance(desc, str):
-            return False
-        
-        # Remove common location markers that aren't real descriptions
-        if desc.strip() in ['Kathmandu', 'Nepal', 'Kathmandu, Nepal']:
-            return False
-        
-        # Check if description has meaningful length (at least 10 words)
-        words = desc.strip().split()
-        if len(words) < 10:
-            return False
-            
-        return True
-    
-    # Create mask for valid descriptions
-    valid_mask = df['description'].apply(is_valid_description)
-    
-    # Split into cleaned and uncleaned dataframes
-    cleaned_df = df[valid_mask].copy()
-    uncleaned_df = df[~valid_mask].copy()
-    
-    # Clean up description formatting for cleaned data
-    cleaned_df['description'] = cleaned_df['description'].apply(lambda x: x.strip())
-    
-    # Remove duplicate entries based on name and description
-    cleaned_df = cleaned_df.drop_duplicates(subset=['name', 'description'])
-    
-    # Sort by rating (descending) and fill any missing ratings with 0
-    cleaned_df['rating'] = cleaned_df['rating'].fillna(0)
-    cleaned_df = cleaned_df.sort_values('rating', ascending=False)
-    
-    # Add reason for removal to uncleaned data
-    def get_removal_reason(row):
-        desc = row['description']
-        if pd.isna(desc):
-            return "Missing description"
-        if not isinstance(desc, str):
-            return "Invalid description type"
-        if desc.strip() in ['Kathmandu', 'Nepal', 'Kathmandu, Nepal']:
-            return "Generic location description"
-        if len(desc.strip().split()) < 10:
-            return "Description too short (< 10 words)"
-        return "Other"
-    
-    uncleaned_df['removal_reason'] = uncleaned_df.apply(get_removal_reason, axis=1)
-    
-    # Save both datasets
-    cleaned_df.to_csv(clean_output_file, index=False)
-    uncleaned_df.to_csv(uncleaned_output_file, index=False)
-    
-    # Print summary statistics
-    print("\nData Cleaning Summary:")
-    print("-" * 50)
-    print(f"Original number of entries: {len(df)}")
-    print(f"Cleaned entries: {len(cleaned_df)}")
-    print(f"Removed entries: {len(uncleaned_df)}")
-    print("\nBreakdown of removed entries:")
-    print(uncleaned_df['removal_reason'].value_counts())
-    
-    return cleaned_df, uncleaned_df
+# Function to fetch description from Wikipedia
+def fetch_description_from_wikipedia(city):
+    url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{city.replace(' ', '_')}"
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if "extract" in data:
+            return data["extract"]
+        else:
+            return None
+    except Exception as e:
+        print(f"Error fetching description for {city} from Wikipedia: {e}")
+        return None
 
-# Usage
-if __name__ == "__main__":
-    input_file = "Data/FinalDataset/attractions_final.csv"
-    clean_output_file = "attractions_cleaned.csv"
-    uncleaned_output_file = "attractions_uncleaned.csv"
-    
-    cleaned_data, uncleaned_data = clean_attractions_data(
-        input_file, 
-        clean_output_file, 
-        uncleaned_output_file
-    )
+# Function to search on Google if Wikipedia does not provide a description
+def fetch_description_from_google(city, api_key, cse_id):
+    search_url = f"https://www.googleapis.com/customsearch/v1?q={city}&key={api_key}&cx={cse_id}"
+    try:
+        response = requests.get(search_url)
+        data = response.json()
+        if "items" in data:
+            return data["items"][0]["snippet"]  # Fetch the snippet from the first result
+        else:
+            return f"No information found on Google for {city}."
+    except Exception as e:
+        print(f"Error fetching Google results for {city}: {e}")
+        return f"No information found for {city}."
+
+# Function to get the description from either Wikipedia or Google
+def fetch_description(city, api_key, cse_id):
+    description = fetch_description_from_wikipedia(city)
+    if description:
+        return description
+    else:
+        print(f"Wikipedia not found for {city}, searching Google...")
+        return fetch_description_from_google(city, api_key, cse_id)
+
+# Process the CSV file with city names
+def process_city_list(input_file, output_file, api_key, cse_id):
+    with open(input_file, mode='r', newline='', encoding='utf-8-sig') as infile, open(output_file, mode='w', newline='', encoding='utf-8-sig') as outfile:
+        reader = csv.reader(infile)
+        writer = csv.writer(outfile)
+
+        # Write header for the new CSV
+        writer.writerow(["City", "Description"])
+
+        # Process each row (each row contains only a city name)
+        for row in reader:
+            # Skip empty rows or rows with only whitespace
+            if not row or not row[0].strip():
+                continue
+
+            city = row[0].strip()  # Get the city name and remove extra spaces
+            description = fetch_description(city, api_key, cse_id)
+            writer.writerow([city, description])
+            print(f"Processed: {city}")
+
+    print(f"Descriptions added and saved to '{output_file}'")
+
+# Input and output file paths
+input_csv = "FinalDataset/check.csv"  # Replace with your input file path
+output_csv = "cities_with_descriptions.csv"  # Replace with your desired output file path
+
+# Set your Google Custom Search API credentials
+api_key = "AIzaSyBffzHsIddLw-0FpZqU9lgBvajDql7qSlg"  # Replace with your Google API key
+cse_id = "7733fac50010548ea"  # Replace with your Custom Search Engine ID
+
+# Process the file
+process_city_list(input_csv, output_csv, api_key, cse_id)
