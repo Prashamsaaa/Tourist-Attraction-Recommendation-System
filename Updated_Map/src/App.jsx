@@ -4,6 +4,7 @@ import RegisterPage from "./components/Register";
 import PreferencesPage from "./components/Preference";
 import Places from "./components/NearbyPlaces";
 import Map from "./components/Map";
+import Counter from "./components/Counter";
 
 const router = createBrowserRouter([
   {
@@ -11,6 +12,7 @@ const router = createBrowserRouter([
     element: <Navigate to={"login"} />,
   },
   {
+    name: "Login",
     path: "/login",
     element: <LoginPage />,
     errorElement: "Login Error here",
@@ -35,6 +37,11 @@ const router = createBrowserRouter([
     element: <Map />,
     errorElement: "Map not found.",
   },
+  {
+    path: "/counter",
+    element: <Counter />,
+    errorElement: "Error in counter"
+  }
 ]);
 
 function App() {

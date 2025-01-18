@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Eye, EyeOff, Mail, User } from "lucide-react";
 import { Link } from "react-router";
+import { useDispatch } from "react-redux";
+import { createUser } from "../slices/AuthStoreSlice";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -9,6 +11,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const dispatch = useDispatch();
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -18,6 +21,14 @@ export default function RegisterPage() {
       password,
       confirmPassword,
     });
+    const payload = {
+      name,
+      email,
+      password,
+      username: name.toLowerCase().split(" ")[0],
+    };
+    console.log("payload : ", payload);
+    dispatch(createUser(payload));
   };
 
   return (

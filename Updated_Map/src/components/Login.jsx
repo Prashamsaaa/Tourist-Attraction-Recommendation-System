@@ -1,19 +1,32 @@
 import { useState } from "react";
 import { Eye, EyeOff, Mail } from "lucide-react";
 import { Link, useNavigate } from "react-router";
+import { useDispatch } from "react-redux";
+import { login } from "../slices/AuthStoreSlice";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const dispatch = useDispatch();
 
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     console.log("Login attempted with:", { email, password, rememberMe });
-    navigate("/preference");
+    const payload = {
+      email,
+      password,
+    };
+    const response = await dispatch(login(payload));
+    console.log("🚀 ~ handleSubmit ~ response:", response);
+    if (response.success) {
+      navigate("/preference");
+    } else {
+      navigate({ name: "Login" });
+    }
   };
 
   return (
