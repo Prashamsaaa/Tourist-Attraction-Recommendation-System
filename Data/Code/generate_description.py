@@ -1,125 +1,82 @@
 import pandas as pd
-from transformers import GPT2LMHeadModel, GPT2Tokenizer
-import torch
 import time
-import logging
+from groq import Groq
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Load the pre-trained GPT-2 model and tokenizer from Hugging Face
-tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-model = GPT2LMHeadModel.from_pretrained("gpt2")
-
-# Ensure the pad token is set (for padding if needed)
-tokenizer.pad_token = tokenizer.eos_token
-
-# Function to rewrite description using GPT-2
-def rewrite_description_with_gpt2(description, name, location, place_type):
+def generate_place_description(client, place_name):
     """
-    Use GPT-2 to rewrite a description to make it sound more formal and structured
-    for a tourist site.
+    Generate a description for a place using Groq API
     """
-    if not description:
-        return ""
+    prompt = f"Generate a brief description (2-3 sentences) of {place_name}. Focus on its key features and significance."
     
-    # Prepare the input text for GPT-2
-    input_text = f"Place: {name}\nLocation: {location}\nType: {place_type}\nExisting Description: {description}\n\nRewritten Description:"
-    
-    # Tokenize input text
-    inputs = tokenizer.encode(input_text, return_tensors="pt", max_length=512, truncation=True, padding=True)
-    
-    # Create attention mask
-    attention_mask = torch.ones(inputs.shape, dtype=torch.long)  # 1 for actual tokens, 0 for padding
-    
-    # Generate the output with max_new_tokens to limit the total token count
-    outputs = model.generate(inputs, attention_mask=attention_mask, max_new_tokens=150, num_return_sequences=1, no_repeat_ngram_size=2, temperature=0.7, pad_token_id=tokenizer.eos_token_id)
-    
-    # Decode the output
-    rewritten_description = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
-    # Remove the original input portion, keeping only the rewritten description
-    rewritten_description = rewritten_description.replace(input_text, "").strip()
-    
-    return rewritten_description
+    try:
+        completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            model="mixtral-8x7b-32768",  # You can change the model as needed
+            temperature=0.7,
+            max_tokens=150
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        print(f"Error generating description for {place_name}: {str(e)}")
+        return "Description generation failed"
 
-# Main function to load CSV, process descriptions, and save the modified CSV
-def clean_and_rewrite_places(input_file='places.csv', output_file='cleaned_places.csv'):
-    # Load the CSV file into a DataFrame
-    logging.info("Loading data from CSV...")
-    df = pd.read_csv(input_file)
+def process_places_csv(input_file, output_file, api_key):
+    """
+    Process places from input CSV and generate descriptions using pandas
+    """
+    # Initialize Groq client
+    client = Groq(api_key=api_key)
     
-    # Check if the description column exists
-    if 'description' not in df.columns:
-        logging.error("Description column is missing.")
-        return
-    
-    # Fill missing descriptions with empty strings
-    logging.info("Filling missing descriptions with empty strings...")
-    df['description'] = df['description'].fillna("")
-    
-    # Process descriptions in chunks (to avoid memory issues if the dataset is large)
-    chunk_size = 5
-    num_chunks = len(df) // chunk_size + (1 if len(df) % chunk_size != 0 else 0)
-    
-    logging.info(f"Processing {num_chunks} chunks of data...")
-    all_rewritten_descriptions = []
-    
-    # Iterate over chunks of data
-    for i in range(num_chunks):
-        chunk = df.iloc[i * chunk_size : (i + 1) * chunk_size]
-        logging.info(f"Processing chunk {i + 1}/{num_chunks}...")
+    # Read input CSV
+    try:
+        # Read input CSV first without dtype specification
+        df = pd.read_csv(input_file)
         
-        # Rewrite descriptions for each chunk
-        chunk['description'] = chunk.apply(lambda row: rewrite_description_with_gpt2(
-            row['description'], row['name'], row['location'], row['types']), axis=1)
+        # Clean and convert id column
+        df['id'] = pd.to_numeric(df['id'], errors='coerce')  # Convert to numeric, invalid values become NaN
+        df = df.dropna(subset=['id'])  # Remove rows with NaN in id column
+        df['id'] = df['id'].astype(int)  # Convert to integer
         
-        # Save the chunk after processing
-        chunk_output_file = f"cleaned_chunk_{i + 1}.csv"
-        logging.info(f"Saving processed chunk {i + 1} to {chunk_output_file}...")
-        chunk.to_csv(chunk_output_file, index=False)
+        # Validate required columns
+        required_columns = ['id', 'name']
+        if not all(col in df.columns for col in required_columns):
+            raise ValueError(f"Input CSV must contain columns: {required_columns}")
         
-        # Add the chunk to the list for concatenation
-        all_rewritten_descriptions.append(chunk)
+        # Generate descriptions
+        print("Generating descriptions...")
+        descriptions = []
+        for place_name in df['name']:
+            print(f"Processing: {place_name}")
+            description = generate_place_description(client, place_name)
+            descriptions.append(description)
+            time.sleep(1)  # Rate limiting
         
-        # Optionally, add a small delay to avoid overwhelming the system
-        time.sleep(1)
-    
-    # Concatenate all chunks back into one DataFrame
-    logging.info("Concatenating all chunks...")
-    df_cleaned = pd.concat(all_rewritten_descriptions, ignore_index=True)
-    
-    # Clean other columns (strip spaces)
-    logging.info("Cleaning columns (stripping spaces)...")
-    df_cleaned['name'] = df_cleaned['name'].str.strip()
-    df_cleaned['address'] = df_cleaned['address'].str.strip()
-    df_cleaned['location'] = df_cleaned['location'].str.strip()
-    df_cleaned['types'] = df_cleaned['types'].str.strip()
-    
-    # Convert coordinates to numeric and drop rows with invalid coordinates
-    logging.info("Converting coordinates to numeric values...")
-    df_cleaned['latitude'] = pd.to_numeric(df_cleaned['latitude'], errors='coerce')
-    df_cleaned['longitude'] = pd.to_numeric(df_cleaned['longitude'], errors='coerce')
-    df_cleaned = df_cleaned.dropna(subset=['latitude', 'longitude'])
-    
-    # Remove rows with empty descriptions
-    logging.info("Removing rows with empty descriptions...")
-    df_cleaned = df_cleaned[df_cleaned['description'].str.len() > 0]
-    
-    # Save the final cleaned data to a new CSV file
-    logging.info(f"Saving cleaned data to {output_file}...")
-    df_cleaned.to_csv(output_file, index=False)
-    
-    logging.info(f"Original number of entries: {len(df)}")
-    logging.info(f"Cleaned data saved to: {output_file}")
-    
-    # Print a sample of the cleaned descriptions
-    logging.info("\nSample of cleaned descriptions:")
-    sample = df_cleaned.sample(n=3)
-    for _, row in sample.iterrows():
-        logging.info(f"\nName: {row['name']}")
-        logging.info(f"Description: {row['description']}")
+        # Add descriptions to dataframe
+        df['description'] = descriptions
+        
+        # Save to output CSV
+        df.to_csv(output_file, index=False)
+        return True
+        
+    except Exception as e:
+        print(f"Error processing CSV: {str(e)}")
+        return False
 
-# Run the script if this file is being executed directly
+def main():
+    # Configuration
+    INPUT_CSV = 'lastremaining.csv'  # Input CSV with columns: id, name
+    OUTPUT_CSV = 'lastremaining_output.csv'  # Output CSV with columns: id, name, description
+    GROQ_API_KEY = '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'  # Replace with your actual Groq API key
+    
+    if process_places_csv(INPUT_CSV, OUTPUT_CSV, GROQ_API_KEY):
+        print(f"\nProcess completed successfully! Results saved to {OUTPUT_CSV}")
+    else:
+        print("\nProcess failed. Please check the error messages above.")
+
 if __name__ == "__main__":
-    clean_and_rewrite_places(input_file='FinalDataset/places.csv', output_file='cleaned_places.csv')
+    main()
