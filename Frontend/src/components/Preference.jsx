@@ -1,6 +1,13 @@
-import { useState } from "react";
-import { ChevronDown, Star, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, ChevronDown, LogOut, X } from "lucide-react";
+import {
+  createPreference,
+  getPreferenceByUserId,
+} from "../slices/PreferenceSlice";
+import { useDispatch, useSelector } from "react-redux";
+import DisplayCard from "./Preference/DisplayCard";
 import { useNavigate } from "react-router";
+import { logout } from "../slices/AuthStoreSlice";
 
 const preferences = [
   {
@@ -37,12 +44,25 @@ const places = [
 ];
 
 export default function PreferencesPage() {
+  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const [userPreferences, setUserPreferences] = useState([]);
+  const { loading, userPreferenceData } = useSelector(
+    (state) => state.preference
+  );
 
   const [selectedPreferences, setSelectedPreference] = useState([]);
   const [isPreferenceDropdownOpen, setIsPreferenceDropdownOpen] =
     useState(false);
+
+  const handleBackClick = () => {
+    navigate(-1);
+  };
+
+  const handleLogout = () => {
+    console.log("Logging out...");
+    dispatch(logout());
+    navigate("/login");
+  };
 
   const handleSelectPreferenceChange = (language) => {
     setSelectedPreference((prev) =>
@@ -54,23 +74,39 @@ export default function PreferencesPage() {
 
   const resetUserPreference = () => {
     setSelectedPreference([]);
-    setUserPreferences([]);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setUserPreferences(selectedPreferences);
-    console.log("Preferences submitted:", userPreferences);
+    if (selectedPreferences.length) {
+      const response = dispatch(createPreference(selectedPreferences));
+      console.log("response: ", response);
+    }
   };
 
-  const showRecommendedPlaces = () => {
-    console.log("here to show recommended places based on clicked data");
-    navigate("/places");
-  };
+  useEffect(() => {
+    dispatch(getPreferenceByUserId());
+  }, [dispatch]);
 
   return (
     <div className="min-h-screen bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
+        <div className="mb-6 flex justify-between items-center">
+          <button
+            onClick={handleBackClick}
+            className="flex items-center text-indigo-600 hover:text-indigo-800 transition-colors duration-200"
+          >
+            <ArrowLeft className="w-5 h-5 mr-2" />
+            Back
+          </button>
+          <button
+            onClick={handleLogout}
+            className="flex items-center text-red-600 hover:text-red-800 transition-colors duration-200"
+          >
+            <LogOut className="w-5 h-5 mr-2" />
+            Logout
+          </button>
+        </div>
         <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8 h-[400px]">
           <div className="p-8">
             <div className="uppercase tracking-wide text-sm text-indigo-500 font-semibold mb-1">
@@ -171,9 +207,15 @@ export default function PreferencesPage() {
               <div className="mt-6 flex gap-2">
                 <button
                   type="submit"
-                  className="w-full sm:w-auto flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  className={`w-full sm:w-auto flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white 
+                    ${
+                      loading
+                        ? "bg-indigo-400 cursor-not-allowed"
+                        : "bg-indigo-600 hover:bg-indigo-700"
+                    } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+                  disabled={loading}
                 >
-                  Save Preferences
+                  {loading ? "Saving..." : "Save Preferences"}
                 </button>
                 <button
                   className="w-full transition-all duration-75 ease-linear sm:w-auto flex justify-center py-2 px-4 border-2 border-indigo-600 rounded-md shadow-sm text-sm font-medium text-indigo-600 bg-transparent hover:bg-indigo-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -187,51 +229,11 @@ export default function PreferencesPage() {
         </div>
 
         {/* Cards to display places */}
-        {userPreferences.length > 0 && (
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="p-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-6">
-                Popular Places
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {places.map((place) => (
-                  <div
-                    key={place.name}
-                    className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer"
-                    onClick={showRecommendedPlaces}
-                  >
-                    <div className="relative h-48">
-                      <img
-                        src={place.image}
-                        alt={place.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="p-4">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {place.name}
-                      </h3>
-                      <div className="flex items-center mt-2">
-                        {[...Array(5)].map((_, i) => (
-                          <Star
-                            key={i}
-                            className={`h-5 w-5 ${
-                              i < Math.floor(place.rating)
-                                ? "text-yellow-400 fill-current"
-                                : "text-gray-300"
-                            }`}
-                          />
-                        ))}
-                        <span className="ml-2 text-sm text-gray-600">
-                          {place.rating.toFixed(1)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+        {userPreferenceData.preference && (
+          <DisplayCard
+            userPreferences={userPreferenceData.preference}
+            places={places}
+          />
         )}
       </div>
     </div>

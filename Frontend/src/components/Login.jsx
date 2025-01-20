@@ -4,6 +4,8 @@ import { Link, useNavigate } from "react-router";
 import { useDispatch } from "react-redux";
 import { login } from "../slices/AuthStoreSlice";
 
+import { toast } from "react-toastify";
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,15 +18,27 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     console.log("Login attempted with:", { email, password, rememberMe });
+
     const payload = {
       email,
       password,
     };
-    const response = await dispatch(login(payload));
-    console.log("🚀 ~ handleSubmit ~ response:", response);
-    if (response.success) {
+
+    try {
+      const response = await dispatch(login(payload)).unwrap();
+
+      console.log("🚀 ~ handleSubmit ~ response:", response);
       navigate("/preference");
-    } else {
+    } catch (error) {
+      console.error("Login failed:", error);
+      if (
+        error.code &&
+        ["auth/invalid-credential", "auth/invalid-email"].includes(error.code)
+      ) {
+        toast.error("Invalid Credential");
+      } else {
+        toast.error(error.message);
+      }
       navigate({ name: "Login" });
     }
   };

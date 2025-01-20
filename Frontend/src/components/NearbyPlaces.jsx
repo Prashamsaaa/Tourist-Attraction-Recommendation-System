@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ArrowLeft, MapPin, Star } from "lucide-react";
+import { ArrowLeft, LogOut, Star } from "lucide-react";
 import { useNavigate } from "react-router";
 import Map from "./Map";
-
+import { useDispatch } from "react-redux";
+import { logout } from "../slices/AuthStoreSlice";
 
 const places = [
   {
@@ -14,7 +15,7 @@ const places = [
     description: "A serene mountain getaway with breathtaking views.",
     x: 20,
     y: 30,
-    position: { lat: 27.7172, lng: 85.324 }
+    position: { lat: 27.7172, lng: 85.324 },
   },
   {
     id: 2,
@@ -25,7 +26,7 @@ const places = [
     description: "Luxurious villa right on the beach with private access.",
     x: 70,
     y: 60,
-    position: { lat: 28.2096, lng: 83.9856 }
+    position: { lat: 28.2096, lng: 83.9856 },
   },
   {
     id: 3,
@@ -36,7 +37,7 @@ const places = [
     description: "Modern loft in the heart of the city, close to attractions.",
     x: 40,
     y: 50,
-    position: { lat: 27.6792, lng: 83.507 }
+    position: { lat: 27.6792, lng: 83.507 },
   },
   {
     id: 4,
@@ -46,7 +47,7 @@ const places = [
     description: "Unique desert retreat with stunning sunset views.",
     x: 80,
     y: 20,
-    position: { lat: 27.5782, lng: 83.207 }
+    position: { lat: 27.5782, lng: 83.207 },
   },
   {
     id: 5,
@@ -56,28 +57,42 @@ const places = [
     description: "Cozy cabin surrounded by lush forest and hiking trails.",
     x: 30,
     y: 70,
-    position: { lat:27.7175, lng: 85.364 }
+    position: { lat: 27.7175, lng: 85.364 },
   },
 ];
 
 export default function NearbyPlacesPage() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const [selectedPlace, setSelectedPlace] = useState(null);
 
   const handleBackClick = () => {
     navigate(-1);
   };
 
+  const handleLogout = () => {
+    console.log("Logging out...");
+    dispatch(logout());
+    navigate("/login");
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex items-center">
+        <div className="mb-6 flex justify-between items-center">
           <button
             onClick={handleBackClick}
             className="flex items-center text-indigo-600 hover:text-indigo-800 transition-colors duration-200"
           >
             <ArrowLeft className="w-5 h-5 mr-2" />
             Back
+          </button>
+          <button
+            onClick={handleLogout}
+            className="flex items-center text-red-600 hover:text-red-800 transition-colors duration-200"
+          >
+            <LogOut className="w-5 h-5 mr-2" />
+            Logout
           </button>
         </div>
         <h1 className="text-3xl font-bold text-gray-900 mb-6">

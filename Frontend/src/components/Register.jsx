@@ -27,8 +27,8 @@ export default function RegisterPage() {
       password,
       username: name.toLowerCase().split(" ")[0],
     };
-    console.log("payload : ", payload);
-    dispatch(createUser(payload));
+    const response = dispatch(createUser(payload));
+    console.log("response from store: ", response);
   };
 
   return (
