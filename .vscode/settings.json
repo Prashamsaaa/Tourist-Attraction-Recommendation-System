@@ -1,0 +1,6 @@
+{
+    "terminal.integrated.env.windows": {
+      "PATH": "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.8"
+    }
+  }
+  
