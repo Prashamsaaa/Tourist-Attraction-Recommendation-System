@@ -8,6 +8,8 @@ from train_model import train_epoch, validate
 from recommendation import Recommender
 
 def main():
+    # print(Config.DATA_PATH)
+    
     # Load and preprocess data
     df, user_mapping, item_mapping = load_and_preprocess_data(Config.DATA_PATH)
     train_df, val_df, test_df = split_data(df, Config.TRAIN_RATIO, Config.VAL_RATIO)
@@ -16,13 +18,14 @@ def main():
     train_loader, val_loader, test_loader = create_dataloaders(
         train_df, val_df, test_df, Config.BATCH_SIZE
     )
+    hidden_layers = [2**(7 - i) for i in range(Config.NUM_LAYERS)]
     
     # Initialize model
     model = NCF(
         num_users=len(user_mapping),
         num_items=len(item_mapping),
         latent_dim=Config.LATENT_DIM,
-        mlp_layers=[64, 32, 16]
+        hidden_layers= hidden_layers,
     )
     
     # Training setup
