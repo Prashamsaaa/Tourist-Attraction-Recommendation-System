@@ -1,7 +1,7 @@
 # Configuration parameters
 class Config:
     # Data parameters
-    DATA_PATH = "../Data/FinalDataset/ratings.csv"
+    DATA_PATH = "../Data/FinalDataset/all_ratings.csv"
     TRAIN_RATIO = 0.8
     VAL_RATIO = 0.1
     TEST_RATIO = 0.1

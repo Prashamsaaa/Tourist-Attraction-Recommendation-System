@@ -4,9 +4,12 @@ from sklearn.model_selection import train_test_split
 def load_and_preprocess_data(data_path):
     df = pd.read_csv(data_path)
     
-    # Create user and item mappings
-    user_mapping = {id_: idx for idx, id_ in enumerate(df['user_id'].unique())}
-    item_mapping = {id_: idx for idx, id_ in enumerate(df['id'].unique())}
+    # Create sequential user and item mappings
+    unique_users = df['user_id'].unique()
+    unique_items = df['id'].unique()
+    
+    user_mapping = {id_: idx for idx, id_ in enumerate(sorted(unique_users))}
+    item_mapping = {id_: idx for idx, id_ in enumerate(sorted(unique_items))}
     
     # Map IDs to indices
     df['user_id'] = df['user_id'].map(user_mapping)

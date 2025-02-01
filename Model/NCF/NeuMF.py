@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from gmf_mlp import GMF
-from gmf_mlp import MLP
+from NCF.gmf_mlp import GMF
+from NCF.gmf_mlp import MLP
 
 
 class NCF(nn.Module):
