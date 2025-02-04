@@ -1,56 +1,46 @@
+# NeuMF.py
+
 import torch
 import torch.nn as nn
-from NCF.gmf_mlp import GMF
-from NCF.gmf_mlp import MLP
+import logging
 
-
-class NCF(nn.Module):
-    def __init__(self, num_users, num_items, latent_dim=64, hidden_layers=[256, 128, 64], dropout_rate=0.2):
-        super(NCF, self).__init__()
+class NeuMF(nn.Module):
+    def __init__(self, gmf_model, mlp_model):
+        super(NeuMF, self).__init__()
+        self.gmf = gmf_model
+        self.mlp = mlp_model
         
-        self.gmf = GMF(num_users, num_items, latent_dim)
-        self.mlp = MLP(latent_dim, hidden_layers)
+        # Get dimensions from models
+        self.gmf_dim = gmf_model.user_embedding.embedding_dim
         
-        # Separate embeddings for MLP
-        self.mlp_user_embedding = nn.Embedding(num_users, latent_dim)
-        self.mlp_item_embedding = nn.Embedding(num_items, latent_dim)
+        # Find the last Linear layer's output size
+        for layer in reversed(mlp_model.mlp_layers):
+            if isinstance(layer, nn.Linear):
+                self.mlp_dim = layer.out_features
+                break
         
-        fusion_dim = latent_dim + hidden_layers[-1]
         self.output_layer = nn.Sequential(
-            nn.Linear(fusion_dim, 32),
+            nn.Linear(self.gmf_dim + self.mlp_dim, 32),
             nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(32, 1)  # No activation here
+            nn.Linear(32, 1)
         )
-        
-        self._init_weights()
-
-    def _init_weights(self):
-        for m in self.output_layer:
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                nn.init.zeros_(m.bias)
 
     def forward(self, user_ids, item_ids):
-        # GMF path
-        gmf_output = self.gmf(user_ids, item_ids)
-        
-        # MLP path with separate embeddings
-        mlp_user_emb = self.mlp_user_embedding(user_ids)
-        mlp_item_emb = self.mlp_item_embedding(item_ids)
-        mlp_output = self.mlp(mlp_user_emb, mlp_item_emb)
-        
-        combined = torch.cat([gmf_output, mlp_output], dim=-1)
-        output = self.output_layer(combined)
-        # Scale the output to range [1, 5]
-        rating = torch.sigmoid(output) * 4 + 1
-        return rating
-
-    def predict(self, user_ids, item_ids):
-        with torch.no_grad():
-            predictions = self(user_ids, item_ids)
-            return predictions
-
-
-
-
+        try:
+            gmf_output = self.gmf(user_ids, item_ids)  # Will be [batch_size, latent_dim]
+            mlp_output = self.mlp(user_ids, item_ids)  # Will be [batch_size, final_mlp_dim]
+            
+            # Ensure GMF output has the same dimensions as MLP output
+            gmf_output = gmf_output.view(gmf_output.size(0), -1)
+            
+            # Now both outputs have shape [batch_size, X]
+            combined = torch.cat([gmf_output, mlp_output], dim=1)
+            
+            # Ensure combined dimensions match the expected input for the output layer
+            combined = combined.view(combined.size(0), -1)
+            
+            output = self.output_layer(combined)
+            return output
+        except Exception as e:
+            logging.error(f"Error in forward pass: {e}")
+            return None

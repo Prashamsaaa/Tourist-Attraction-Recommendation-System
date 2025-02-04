@@ -1,67 +1,26 @@
+# train_model.py
+
+import torch.optim as optim
 import torch
+from tqdm import tqdm
+import numpy as np
+import logging
 
-def train_epoch(model, train_loader, criterion, optimizer):
-    """
-    Train the model for one epoch.
-
-    :param model: PyTorch model to train.
-    :param train_loader: DataLoader containing training data.
-    :param criterion: Loss function.
-    :param optimizer: Optimizer for updating model weights.
-    :return: Average training loss for the epoch.
-    """
-    model.train()  # Set model to training mode
-    total_loss = 0
-
-    for batch in train_loader:
-        user_input = batch['user']
-        item_input = batch['item']
-        target = batch['rating']
-
-        # Zero gradients
-        optimizer.zero_grad()
-
-        # Forward pass
-        output = model(user_input, item_input)
-
-        # Compute loss
-        loss = criterion(output, target)
-
-        # Backward pass and optimization step
-        loss.backward()
-        optimizer.step()
-
-        # Accumulate total loss
-        total_loss += loss.item()
-
-    return total_loss / len(train_loader)
-
-
-def validate(model, val_loader, criterion):
-    """
-    Validate the model on the validation dataset.
-
-    :param model: PyTorch model to validate.
-    :param val_loader: DataLoader containing validation data.
-    :param criterion: Loss function.
-    :return: Average validation loss.
-    """
-    model.eval()  # Set model to evaluation mode
-    total_loss = 0
-
-    with torch.no_grad():
-        for batch in val_loader:
-            user_input = batch['user']
-            item_input = batch['item']
-            target = batch['rating']
-
-            # Forward pass
-            output = model(user_input, item_input)
-
-            # Compute loss
-            loss = criterion(output, target)
-
-            # Accumulate total loss
+def train_model(model, train_loader, test_loader, criterion, optimizer, num_epochs=30, top_k=5, device=None):
+    if device:
+        model.to(device)
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0
+        for user_ids, item_ids, ratings in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
+            if device:
+                user_ids, item_ids, ratings = user_ids.to(device), item_ids.to(device), ratings.to(device)
+            optimizer.zero_grad()
+            outputs = model(user_ids, item_ids).squeeze()
+            loss = criterion(outputs, ratings)
+            loss.backward()
+            optimizer.step()
             total_loss += loss.item()
-
-    return total_loss / len(val_loader)
+        
+        avg_loss = total_loss / len(train_loader)
+        logging.info(f"Epoch {epoch+1}/{num_epochs}, Training Loss: {avg_loss:.4f}")
