@@ -42,7 +42,6 @@ def main():
     print("Initializing Model Manager")
     # Initialize dynamic manager
     model_manager = DynamicModelManager(model, optimizer, criterion, user_encoder, place_encoder)
-    model_manager.save_model_state(MODEL_SAVE_PATH)
     
     # Generate recommendations
     original_user_id = 150

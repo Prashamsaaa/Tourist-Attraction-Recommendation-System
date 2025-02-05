@@ -4,10 +4,10 @@ import pandas as pd
 import numpy as np
 from ContentBased.content_based import ContentBasedRecommender
 from DistilBert.distilbert import DistilBERTRecommender
-# from NCF.config import validate_config
-# from NCF.preprocess import encode_features
 from NCF.recommendation import generate_recommendations
 from Hybrid.hybrid_recommender import HybridRecommender
+from NCF.dataset import load_and_preprocess_data, create_train_test_split, create_dataset_and_loaders
+import torch
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,8 +25,8 @@ def get_category_tags(content_recommender, category):
 def main():
     # === Step 1: Initialize Content-Based Recommender === #
     print("Initializing Content-Based Recommender...")
-    content_file_path = './data/PreparedData.csv'
-    categorized_tags_path = './data/CategorizedTags.json'
+    content_file_path = './Model/Data/PreparedData.csv'
+    categorized_tags_path = './Model/Data/CategorizedTags.json'
 
     if not os.path.exists(content_file_path) or not os.path.exists(categorized_tags_path):
         print("Error: Required data files are missing.")
@@ -38,8 +38,8 @@ def main():
     # === Step 2: Initialize DistilBERT Recommender and Load Embeddings === #
     print("Initializing DistilBERT Recommender...")
     distilbert_recommender = DistilBERTRecommender()
-    descriptions_file = './data/PreparedData.csv'
-    embeddings_file = './models/distilbert_embeddings.npy'
+    descriptions_file = './Model/Data/PreparedData.csv'
+    embeddings_file = './Model/models/distilbert_embeddings.npy'
 
     if not os.path.exists(descriptions_file):
         print("Error: Descriptions file is missing.")
@@ -62,16 +62,19 @@ def main():
     # === Step 3: Initialize NCF Recommender === #
     print("Initializing Neural Collaborative Filtering (NCF) Model...")
     
-    # Load data and mappings
-    df, user_mapping, item_mapping = encode_features(validate_config.DATA_PATH)
+    ratings_path = './Model/Data/all_ratings.csv'
+    attraction_path = './Model/Data/PreparedData.csv'
+    ratings_df, attraction_df, user_encoder, place_encoder = load_and_preprocess_data(ratings_path, attraction_path)
+    train_df, test_df = create_train_test_split(ratings_df, test_size=0.2)
+    train_loader, test_loader = create_dataset_and_loaders(train_df, test_df, batch_size=64)
 
     # Load pre-trained NCF model
-    ncf_model_path = './models/ncf_model.pth'
+    ncf_model_path = './Model/models/ncf_model.pth'
     if not os.path.exists(ncf_model_path):
         print("Error: Pre-trained NCF model not found.")
         return
-
-    ncf_recommender = generate_recommendations(ncf_model_path, item_mapping)
+    ncf_recommender= torch.load(ncf_model_path, weights_only='True')
+    # ncf_recommender = generate_recommendations(ncf_model_path, place_encoder)
     print("NCF Model loaded successfully.\n")
 
     # === Step 4: Initialize Hybrid Recommender === #
@@ -139,7 +142,7 @@ def main():
                 preferred_province = input("Enter your preferred province: ").strip()
                 validate_input(preferred_province, provinces)
 
-                ratings_file = './data/all_ratings.csv'
+                ratings_file = './Model/Data/all_ratings.csv'
                 if not os.path.exists(ratings_file):
                     print("Error: Ratings file is missing.")
                     continue
@@ -154,7 +157,7 @@ def main():
                     ratings=ratings,
                     preferred_province=preferred_province,
                 )
-
+                print(recommendations)
                 print("\n--- Recommendations for Old User ---")
                 if recommendations.empty:
                     print("No recommendations found for your preferences.")

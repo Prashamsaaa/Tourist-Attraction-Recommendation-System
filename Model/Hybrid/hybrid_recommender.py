@@ -1,5 +1,9 @@
 import logging
 import pandas as pd
+from NCF.recommendation import generate_recommendations
+from sklearn.preprocessing import LabelEncoder
+from NCF.dataset import load_and_preprocess_data
+
 
 
 class HybridRecommender:
@@ -72,15 +76,17 @@ class HybridRecommender:
                 print(f"No attractions found in province: {preferred_province}")
                 return pd.DataFrame()
 
+            print(filtered_descriptions.head())
+
             # Collect valid item IDs for the chosen province
             valid_item_ids = set(filtered_descriptions['ID'].astype(int).tolist())
 
             # Step 2: Get NCF recommendations filtered by valid item IDs
-            ncf_recs = self.ncf_recommender.recommend(
-                user_id=user_id,
-                top_n=20,  # Get more items to merge with DistilBERT later
-                valid_item_ids=valid_item_ids
-            )
+                # Load and preprocess data
+            place_encoder = LabelEncoder()
+            filtered_descriptions['id'] = place_encoder.fit_transform(filtered_descriptions['id'])
+            
+            ncf_recs = generate_recommendations(self.ncf_recommender, user_id, num_items= len(place_encoder.classes_), device = 'cpu', place_encoder=place_encoder, attraction_df= filtered_descriptions)
             
             ncf_df = pd.DataFrame(ncf_recs, columns=['item_id', 'score'])
 

@@ -72,6 +72,9 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, num_epoc
         print(f"Recall@10: {recall:.4f}")
         print(f"RMSE: {metrics['rmses'][-1]:.4f}, MAE: {metrics['maes'][-1]:.4f}")
 
+        print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
+        torch.save(model, MODEL_SAVE_PATH)
+
     return train_losses, test_losses, metrics
 
 def evaluate_topn(model, test_loader, num_items, top_k, device):

@@ -71,43 +71,81 @@ class DynamicModelManager:
     def save_model_state(self, path='model_backup.pt'):
         """Save current model state with metadata"""
         try:
+            # Create a complete state dictionary with the entire model
             state = {
-                'model_state': self.model.state_dict(),
-                'optimizer_state': self.optimizer.state_dict(),
+                'model': self.model,  # Save the complete model
+                'optimizer': self.optimizer,  # Save the complete optimizer
+                'criterion': self.criterion,  # Save the loss criterion
                 'user_encoder_classes': self.user_encoder.classes_.tolist(),
                 'place_encoder_classes': self.place_encoder.classes_.tolist(),
                 'version': self.current_version,
+                'update_count': self.update_count,
                 'timestamp': datetime.now().isoformat(),
                 'performance_metrics': {
-                    'recent_loss_avg': np.mean(self.recent_losses) if self.recent_losses else None
+                    'recent_loss_avg': np.mean(self.recent_losses) if self.recent_losses else None,
+                    'recent_losses': list(self.recent_losses),
+                    'performance_history': list(self.performance_history)
                 }
             }
+            
             torch.save(state, path)
             self.last_backup = path
-            self.logger.info(f"Model state saved to {path}")
+            self.logger.info(f"Complete model state saved to {path}")
             return True
+            
         except Exception as e:
             self.logger.error(f"Failed to save model state: {str(e)}")
             return False
 
     def load_model_state(self, path='model_backup.pt'):
-        """Load model state from file"""
+        """Load complete model state from file"""
         try:
-            state = torch.load(path)
-            required_keys = ['model_state', 'optimizer_state', 'version']
-            if not all(key in state for key in required_keys):
-                raise ValueError("Invalid state file")
+            state = torch.load(path, map_location=torch.device('cpu'))
             
-            self.model.load_state_dict(state['model_state'])
-            self.optimizer.load_state_dict(state['optimizer_state'])
+            # Load complete components
+            self.model = state['model']
+            self.optimizer = state['optimizer']
+            self.criterion = state['criterion']
+            
+            # Load encoder data
             self.user_encoder.classes_ = np.array(state['user_encoder_classes'])
             self.place_encoder.classes_ = np.array(state['place_encoder_classes'])
+            
+            # Load version and counters
             self.current_version = state['version']
-            self.logger.info(f"Model state loaded from {path}")
+            self.update_count = state['update_count']
+            
+            # Load performance metrics if available
+            if 'performance_metrics' in state:
+                metrics = state['performance_metrics']
+                self.recent_losses = deque(metrics['recent_losses'], maxlen=10)
+                self.performance_history = deque(metrics['performance_history'], maxlen=100)
+                
+            self.logger.info(f"Complete model state loaded from {path}")
             return True
+            
         except Exception as e:
             self.logger.error(f"Failed to load model state: {str(e)}")
             return False
+
+    # def load_model_state(self, path='model_backup.pt'):
+    #     """Load model state from file"""
+    #     try:
+    #         state = torch.load(path)
+    #         required_keys = ['model_state', 'optimizer_state', 'version']
+    #         if not all(key in state for key in required_keys):
+    #             raise ValueError("Invalid state file")
+            
+    #         self.model.load_state_dict(state['model_state'])
+    #         self.optimizer.load_state_dict(state['optimizer_state'])
+    #         self.user_encoder.classes_ = np.array(state['user_encoder_classes'])
+    #         self.place_encoder.classes_ = np.array(state['place_encoder_classes'])
+    #         self.current_version = state['version']
+    #         self.logger.info(f"Model state loaded from {path}")
+    #         return True
+    #     except Exception as e:
+    #         self.logger.error(f"Failed to load model state: {str(e)}")
+    #         return False
 
     def update_model(self, new_rating_data, train_dataset, device):
         """Update model with new rating data"""
