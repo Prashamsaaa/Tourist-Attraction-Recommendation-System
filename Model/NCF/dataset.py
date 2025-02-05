@@ -1,56 +1,8 @@
 import pandas as pd
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from torch.utils.data import Dataset, DataLoader
 import torch
-from torch.utils.data import Dataset
-import logging
-
-def load_dataset(file_path, ratings_path=None):
-    """Load the dataset from CSV files."""
-    try:
-        data = pd.read_csv(file_path)
-        if ratings_path:
-            ratings_df = pd.read_csv(ratings_path)
-            
-            # Standardize column names
-            data_cols = {
-                'ID': 'item_id',
-                'Name': 'name',
-                'Description': 'description',
-                'Province': 'province',
-                'Tags': 'tags'
-            }
-            ratings_cols = {
-                'user_id': 'user_id',
-                'id': 'item_id',
-                'rating': 'rating'
-            }
-            
-            data = data.rename(columns=data_cols)
-            ratings_df = ratings_df.rename(columns=ratings_cols)
-            
-            # Ensure data types match for merging
-            data['item_id'] = data['item_id'].astype(int)
-            ratings_df['item_id'] = ratings_df['item_id'].astype(int)
-            
-            # Keep only necessary columns and merge
-            merged_df = pd.merge(
-                ratings_df, 
-                data[['item_id', 'name', 'province', 'tags']], 
-                on='item_id',
-                how='inner'
-            )
-            
-            return merged_df, ratings_df
-        return data, None
-    except Exception as e:
-        logging.error(f"Error loading dataset: {e}")
-        return None, None
-
-def preprocess_data(data, ratings=None):
-    """Preprocess the data for training."""
-    if isinstance(data, pd.DataFrame):
-        if 'rating' in data.columns:
-            data['interaction'] = (data['rating'] > 3).astype(int)
-    return data
 
 class NCFDataset(Dataset):
     def __init__(self, user_ids, item_ids, ratings):
@@ -63,3 +15,46 @@ class NCFDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.user_ids[idx], self.item_ids[idx], self.ratings[idx]
+
+def load_and_preprocess_data(ratings_path, attraction_path):
+    print("Loading Data>>>")
+    attraction_df = pd.read_csv(attraction_path)
+    ratings_df = pd.read_csv(ratings_path)
+    
+    ratings_df['id'] = ratings_df['id'].fillna(-1)
+    ratings_df = ratings_df.drop_duplicates(subset=['user_id', 'id'])
+
+    user_encoder = LabelEncoder()
+    place_encoder = LabelEncoder()
+    ratings_df['user_id'] = user_encoder.fit_transform(ratings_df['user_id'])
+    ratings_df['id'] = place_encoder.fit_transform(ratings_df['id'])
+
+    return ratings_df, attraction_df, user_encoder, place_encoder
+
+def create_train_test_split(ratings_df, test_size ):
+    print(f"Splitting data into train size of {(1- test_size)*100} and test size of {test_size * 100}")
+    user_ids = ratings_df['user_id'].unique()
+    train_users, test_users = train_test_split(user_ids, test_size=test_size, random_state=30)
+    return (
+        ratings_df[ratings_df['user_id'].isin(train_users)].copy(),
+        ratings_df[ratings_df['user_id'].isin(test_users)].copy()
+    )
+
+def create_dataset_and_loaders(train_df, test_df, batch_size):
+    print(f"Creating Dataset and Loading the Data.......")
+    train_dataset = NCFDataset(
+        torch.tensor(train_df['user_id'].values, dtype=torch.long),
+        torch.tensor(train_df['id'].values, dtype=torch.long),
+        torch.tensor(train_df['rating'].values, dtype=torch.float32)
+    )
+    
+    test_dataset = NCFDataset(
+        torch.tensor(test_df['user_id'].values, dtype=torch.long),
+        torch.tensor(test_df['id'].values, dtype=torch.long),
+        torch.tensor(test_df['rating'].values, dtype=torch.float32)
+    )
+
+    return (
+        DataLoader(train_dataset, batch_size=batch_size, shuffle=True),
+        DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    )
