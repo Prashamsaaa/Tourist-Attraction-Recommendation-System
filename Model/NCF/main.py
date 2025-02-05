@@ -1,95 +1,62 @@
-import logging
-import pandas as pd
-from config import MODEL_CONFIG, TRAINING_CONFIG
-from dataset import load_dataset, preprocess_data, NCFDataset
-from preprocess import encode_features
-from gmf_mlp import GMF, MLP
-from NeuMF import NeuMF
-from train_model import train_model
+from config import *
+from models import NCF
+from dataset import load_and_preprocess_data, create_train_test_split, create_dataset_and_loaders
+from train_eval import train_model, evaluate_topn
+from utils import plot_loss_curves, calculate_average_metrics
+from dynamic_model_manager import DynamicModelManager
 from recommendation import generate_recommendations
-from torch.utils.data import DataLoader
-import torch
-import torch.nn as nn
-import torch.optim as optim
-
-logging.basicConfig(level=logging.INFO)
 
 def main():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    logging.info(f"Using device: {device}")
-
-    # Step 1: Load and preprocess the dataset
-    data_path = "../Data/PreparedData.csv"
-    ratings_path = "../Data/all_ratings.csv"
-    data, ratings_df = load_dataset(data_path, ratings_path)
-
-    if ratings_df is None:
-        logging.error("No ratings data available")
-        return
-
-    data = preprocess_data(data, ratings_df)
-    data, user_encoder, item_encoder = encode_features(data)
-
-    # Load the dataset into a DataFrame for mapping item IDs to names
-    places_df = pd.read_csv(data_path)
-
-    # Step 2: Initialize models
+    # Load and preprocess data
+    ratings_df, attraction_df, user_encoder, place_encoder = load_and_preprocess_data(
+        './Data/FinalDataset/ratings.csv', 
+        './Data/FinalDataset/Data.csv'
+    )
     num_users = len(user_encoder.classes_)
-    num_items = len(item_encoder.classes_)
-
-    gmf_model = GMF(num_users, num_items, MODEL_CONFIG['embedding_dim']).to(device)
-    mlp_model = MLP(
-        num_users=num_users,
-        num_items=num_items,
-        latent_dim=MODEL_CONFIG['latent_dim'],
-        hidden_layers=MODEL_CONFIG['layers']
-    ).to(device)
+    num_items = len(place_encoder.classes_)
+    # Split data
+    train_df, test_df = create_train_test_split(ratings_df, test_size=TEST_SIZE)
+    train_loader, test_loader = create_dataset_and_loaders(train_df, test_df, BATCH_SIZE)
     
-    neummf_model = NeuMF(gmf_model, mlp_model).to(device)
-
-    # Create dataloaders
-    train_dataset = NCFDataset(
-        user_ids=torch.tensor(data['user_id'].values),
-        item_ids=torch.tensor(data['item_id'].values),
-        ratings=torch.tensor(data['rating'].values, dtype=torch.float32)
+    print("Initializing the NCF model...........")
+    # Initialize model
+    model = NCF(
+        num_users=len(user_encoder.classes_),
+        num_items=len(place_encoder.classes_),
+        latent_dim=LATENT_DIM
+    ).to(DEVICE)
+    print(f"Model: {model}")
+    
+    # Training
+    criterion = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-3)
+    
+    train_losses, test_losses, metrics = train_model(
+        model, train_loader, test_loader, 
+        criterion, optimizer, NUM_EPOCHS, DEVICE, num_items
     )
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=TRAINING_CONFIG['batch_size'],
-        shuffle=True
+    print("-------------------Training Completed-----------------------")
+    print("Printing Average Metrics and Displaying Loss Curves")
+    calculate_average_metrics(metrics['hit_rates'],metrics['ndcgs'], metrics['rmses'], metrics['precisions'], metrics['recalls'], metrics['maes'], TOP_K)
+    plot_loss_curves(train_losses=train_losses, test_losses=test_losses, num_epochs= NUM_EPOCHS)
+    print("Initializing Model Manager")
+    # Initialize dynamic manager
+    model_manager = DynamicModelManager(model, optimizer, criterion, user_encoder, place_encoder)
+    model_manager.save_model_state(MODEL_SAVE_PATH)
+    
+    # Generate recommendations
+    original_user_id = 150
+    encoded_user_id = user_encoder.transform([original_user_id])[0]
+    recommendations = generate_recommendations(
+        model_manager.model, encoded_user_id, 
+        num_items, TOP_K, DEVICE,
+        place_encoder, attraction_df
     )
-
-    # Initialize loss and optimizer
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(
-        neummf_model.parameters(),
-        lr=TRAINING_CONFIG['learning_rate']
-    )
-
-    # Train the model
-    train_model(
-        model=neummf_model,
-        train_loader=train_loader,
-        test_loader=None,
-        criterion=criterion,
-        optimizer=optimizer,
-        num_epochs=TRAINING_CONFIG['epochs'],
-        device=device
-    )
-
-    # Generate recommendations for a specific user
-    user_id = 34  # Example user ID
-    recommendations = generate_recommendations(neummf_model, user_id, num_items=num_items, device=device)
-
-    # Map recommended IDs to their names using the dataset
-    recommended_places = places_df[places_df['ID'].isin(recommendations)][['ID', 'Name']]
-
-    # Convert to list of tuples (ID, Name)
-    recommendations_with_names = list(zip(recommended_places['ID'], recommended_places['Name']))
-
-    # Log recommendations with both IDs and names
-    logging.info(f"Recommendations for User {user_id}: {recommendations_with_names}")
+    
+    # Print recommendations
+    print(f"\nTop {TOP_K} recommendations for user {original_user_id}:")
+    for idx, rec in enumerate(recommendations, 1):
+        print(f"{idx}. {rec['name']} (Confidence: {rec['confidence']:.3f})")
 
 if __name__ == "__main__":
     main()
