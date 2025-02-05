@@ -169,3 +169,6 @@ def main():
     
             else:
                 print("Invalid user type. Please enter 'new' or 'old'.")
+                
+if __name__ == "__main__":
+    main()
