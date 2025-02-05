@@ -4,8 +4,8 @@ import pandas as pd
 import numpy as np
 from ContentBased.content_based import ContentBasedRecommender
 from DistilBert.distilbert import DistilBERTRecommender
-from NCF.config import validate_config
-from NCF.preprocess import encode_features
+# from NCF.config import validate_config
+# from NCF.preprocess import encode_features
 from NCF.recommendation import generate_recommendations
 from Hybrid.hybrid_recommender import HybridRecommender
 

@@ -46,12 +46,16 @@ class NCF(nn.Module):
             nn.ReLU(),
             nn.Linear(32, 1)
         )
+        self.tanh = nn.Tanh()
+
 
     def forward(self, user_ids, item_ids):
         gmf_output = self.gmf(user_ids, item_ids)
         mlp_output = self.mlp(user_ids, item_ids)
         combined = torch.cat([gmf_output, mlp_output], dim=-1)
         output = self.output_layer(combined)
+        # Apply tanh and scale to range [0, 5]
+        output = (self.tanh(output) + 1) * 2.5  # Scaling from [-1, 1] to [0, 5]
         return output
 
     def predict(self, user_ids, item_ids):

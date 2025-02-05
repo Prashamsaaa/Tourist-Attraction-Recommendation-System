@@ -1,5 +1,5 @@
 import torch
-def generate_recommendations(model, user_id, num_items, top_k, device, place_encoder, attraction_df, min_score=0.5):
+def generate_recommendations(model, user_id, num_items, top_k, device, place_encoder, attraction_df, min_score=2.5):
     """
     Generates top-K recommendations for a user with confidence scores.
     """

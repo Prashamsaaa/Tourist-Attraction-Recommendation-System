@@ -22,6 +22,8 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, num_epoc
             
             optimizer.zero_grad()
             predictions = model(user_ids, item_ids)
+            # print(f"Min value: {predictions.min()}, Max value: {predictions.max()}")  
+
             loss = criterion(predictions.squeeze(), ratings)
             loss.backward()
             optimizer.step()
@@ -106,7 +108,7 @@ def evaluate_topn(model, test_loader, num_items, top_k, device):
                     actual_items = [int(actual_items)]
                 
                 hits.append(calculate_hit_rate(top_items, actual_items))
-                ndcgs.append(calculate_ndcg(top_items, actual_items, top_k))
+                ndcgs.append(calculate_ndcg(top_items, actual_items, positive_items , top_k))
                 prec, rec = calculate_precision_recall(top_items, actual_items, top_k)
                 precisions.append(prec)
                 recalls.append(rec)
@@ -114,7 +116,7 @@ def evaluate_topn(model, test_loader, num_items, top_k, device):
         
     # Return zeros if no hits were recorded
     if not hits:
-        return 0.0, 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0
     
     # Calculate final metrics
     hit_rate = np.mean(hits)
