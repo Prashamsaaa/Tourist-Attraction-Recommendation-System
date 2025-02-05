@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
+import { createBrowserRouter, RouterProvider } from "react-router";
 
 import { ToastContainer } from "react-toastify";
 import "react-toastify/ReactToastify.css";
@@ -8,11 +8,13 @@ import RegisterPage from "./components/Register";
 import PreferencesPage from "./components/Preference";
 import Places from "./components/NearbyPlaces";
 import Map from "./components/Map";
+import PlaceDetails from "./components/PlaceDetails";
+import Index from "./components/LandingPage/Index";
 
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <Navigate to={"login"} />,
+    element: <Index />,
   },
   {
     name: "Login",
@@ -34,6 +36,11 @@ const router = createBrowserRouter([
     path: "/places",
     element: <Places />,
     errorElement: "Places Error here",
+  },
+  {
+    path: "/details",
+    element: <PlaceDetails />,
+    errorElement: "No details found",
   },
   {
     path: "/map",

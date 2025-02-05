@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ChevronDown, LogOut, X } from "lucide-react";
+import { ChevronDown, LogOut, X } from "lucide-react";
 import {
   createPreference,
   getPreferenceByUserId,
@@ -8,6 +8,7 @@ import { useDispatch, useSelector } from "react-redux";
 import DisplayCard from "./Preference/DisplayCard";
 import { useNavigate } from "react-router";
 import { logout } from "../slices/AuthStoreSlice";
+import { places } from "../constants/places";
 
 const preferences = [
   {
@@ -17,36 +18,10 @@ const preferences = [
   },
 ];
 
-const places = [
-  {
-    name: "Mountain Retreat",
-    image:
-      "https://www.holidify.com/images/cmsuploads/compressed/shutterstock_223257994_20190822132504.jpg",
-    rating: 4.5,
-  },
-  {
-    name: "Seaside Villa",
-    image:
-      "https://www.holidify.com/images/cmsuploads/compressed/shutterstock_627150563_20190822130709_20190822154343.jpg",
-    rating: 4.8,
-  },
-  {
-    name: "Urban Loft",
-    image:
-      "https://www.holidify.com/images/cmsuploads/compressed/shutterstock_647026006_20190822122032.jpg",
-    rating: 4.2,
-  },
-  {
-    name: "Desert Oasis",
-    image: "https://www.holidify.com/images/bgImages/JANAKPUR.jpg",
-    rating: 4.6,
-  },
-];
-
 export default function PreferencesPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { loading, userPreferenceData } = useSelector(
+  const { loading, userPreferenceData, fetching } = useSelector(
     (state) => state.preference
   );
 
@@ -54,9 +29,9 @@ export default function PreferencesPage() {
   const [isPreferenceDropdownOpen, setIsPreferenceDropdownOpen] =
     useState(false);
 
-  const handleBackClick = () => {
-    navigate(-1);
-  };
+  // const handleBackClick = () => {
+  //   navigate(-1);
+  // };
 
   const handleLogout = () => {
     console.log("Logging out...");
@@ -88,17 +63,23 @@ export default function PreferencesPage() {
     dispatch(getPreferenceByUserId());
   }, [dispatch]);
 
+  useEffect(() => {
+    if (userPreferenceData?.preference) {
+      setSelectedPreference(userPreferenceData.preference);
+    }
+  }, [userPreferenceData]);
+
   return (
     <div className="min-h-screen bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex justify-between items-center">
-          <button
+        <div className="mb-6 flex justify-end items-center">
+          {/* <button
             onClick={handleBackClick}
             className="flex items-center text-indigo-600 hover:text-indigo-800 transition-colors duration-200"
           >
             <ArrowLeft className="w-5 h-5 mr-2" />
             Back
-          </button>
+          </button> */}
           <button
             onClick={handleLogout}
             className="flex items-center text-red-600 hover:text-red-800 transition-colors duration-200"

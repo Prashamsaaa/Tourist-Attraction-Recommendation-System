@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Eye, EyeOff, Mail, User } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useDispatch } from "react-redux";
 import { createUser } from "../slices/AuthStoreSlice";
+
+import { toast } from "react-toastify";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -11,24 +13,31 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Registration attempted with:", {
-      name,
-      email,
-      password,
-      confirmPassword,
-    });
-    const payload = {
-      name,
-      email,
-      password,
-      username: name.toLowerCase().split(" ")[0],
-    };
-    const response = dispatch(createUser(payload));
-    console.log("response from store: ", response);
+    setLoading(true);
+    try {
+      const payload = {
+        name,
+        email,
+        password,
+        username: name.toLowerCase().split(" ")[0],
+      };
+      const response = await dispatch(createUser(payload)).unwrap();
+      if (response.success) {
+        toast.success("User Created Successfully");
+        navigate('/login');
+      }
+    } catch (error) {
+      console.log("Error in registering new user", error);
+      toast.error(error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -146,11 +155,46 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <button
+            {/* <button
               type="submit"
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
               Register
+            </button> */}
+            <button
+              type="submit"
+              disabled={loading}
+              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white ${
+                loading
+                  ? "bg-indigo-400 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-700"
+              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+            >
+              {loading ? (
+                <div className="flex items-center">
+                  <svg
+                    className="animate-spin h-5 w-5 mr-2 text-white"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4l-3 3m7 5l3-3v4a8 8 0 01-8 8z"
+                    ></path>
+                  </svg>
+                  Registering...
+                </div>
+              ) : (
+                "Register"
+              )}
             </button>
           </div>
         </form>
