@@ -1,5 +1,7 @@
 import torch
+from config import *
 import torch.nn as nn
+
 
 class GMF(nn.Module):
     def __init__(self, num_users, num_items, latent_dim):
@@ -12,13 +14,13 @@ class GMF(nn.Module):
         item_emb = self.item_embedding(item_ids)
         return user_emb * item_emb
 
+
 class MLP(nn.Module):
     def __init__(self, num_users, num_items, latent_dim, hidden_layers):
         super(MLP, self).__init__()
         self.user_embedding = nn.Embedding(num_users, latent_dim, padding_idx=0)
         self.item_embedding = nn.Embedding(num_items, latent_dim, padding_idx=0)
 
-        
         input_dim = latent_dim * 2
         layers = []
         for layer_size in hidden_layers:
@@ -36,19 +38,29 @@ class MLP(nn.Module):
         mlp_input = torch.cat([user_emb, item_emb], dim=-1)
         return self.mlp_layers(mlp_input)
 
+
 class NCF(nn.Module):
-    def __init__(self, num_users, num_items, latent_dim=32, hidden_layers=[32, 16, 8]):
+    def __init__(
+        self, num_users, num_items, latent_dim=LATENT_DIM, hidden_layers=HIDDEN_LAYERS
+    ):
         super(NCF, self).__init__()
         self.gmf = GMF(num_users, num_items, latent_dim)
         self.mlp = MLP(num_users, num_items, latent_dim, hidden_layers)
-        
+
         fusion_dim = latent_dim + hidden_layers[-1]
         self.output_layer = nn.Sequential(
-            nn.Linear(fusion_dim, 16),
-            nn.ReLU(),
-            nn.Linear(16, 1)
+            nn.Linear(fusion_dim, 16), nn.ReLU(), nn.Linear(16, 1)
         )
 
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.kaiming_normal_(module.weight)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.Embedding):
+            nn.init.normal_(module.weight, mean=0.0, std=0.01)
 
     def forward(self, user_ids, item_ids):
         gmf_output = self.gmf(user_ids, item_ids)
