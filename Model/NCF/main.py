@@ -29,8 +29,7 @@ def main():
     
     # Training
     criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-2)
-    
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=0.1, betas=(0.9, 0.999))
     train_losses, test_losses, metrics = train_model(
         model, train_loader, test_loader, 
         criterion, optimizer, NUM_EPOCHS, DEVICE, num_items

@@ -3,7 +3,6 @@ import numpy as np
 from tqdm import tqdm
 from metrics import calculate_hit_rate, calculate_ndcg, calculate_precision_recall, calculate_rmse, calculate_mae
 from config import *
-
 def train_model(model, train_loader, test_loader, criterion, optimizer, num_epochs, device, num_items):
     train_losses = []
     test_losses = []
@@ -26,6 +25,7 @@ def train_model(model, train_loader, test_loader, criterion, optimizer, num_epoc
 
             loss = criterion(predictions.squeeze(), ratings)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             running_loss += loss.item()
 

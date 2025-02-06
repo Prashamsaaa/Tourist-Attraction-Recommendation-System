@@ -15,15 +15,17 @@ class GMF(nn.Module):
 class MLP(nn.Module):
     def __init__(self, num_users, num_items, latent_dim, hidden_layers):
         super(MLP, self).__init__()
-        self.user_embedding = nn.Embedding(num_users, latent_dim)
-        self.item_embedding = nn.Embedding(num_items, latent_dim)
+        self.user_embedding = nn.Embedding(num_users, latent_dim, padding_idx=0)
+        self.item_embedding = nn.Embedding(num_items, latent_dim, padding_idx=0)
+
         
         input_dim = latent_dim * 2
         layers = []
         for layer_size in hidden_layers:
             layers.append(nn.Linear(input_dim, layer_size))
+            layers.append(nn.BatchNorm1d(layer_size))
             layers.append(nn.ReLU())
-            layers.append(nn.Dropout(0.4))
+            layers.append(nn.Dropout(0.1))
             input_dim = layer_size
 
         self.mlp_layers = nn.Sequential(*layers)
@@ -35,18 +37,17 @@ class MLP(nn.Module):
         return self.mlp_layers(mlp_input)
 
 class NCF(nn.Module):
-    def __init__(self, num_users, num_items, latent_dim=64, hidden_layers=[256, 128, 64]):
+    def __init__(self, num_users, num_items, latent_dim=32, hidden_layers=[32, 16, 8]):
         super(NCF, self).__init__()
         self.gmf = GMF(num_users, num_items, latent_dim)
         self.mlp = MLP(num_users, num_items, latent_dim, hidden_layers)
         
         fusion_dim = latent_dim + hidden_layers[-1]
         self.output_layer = nn.Sequential(
-            nn.Linear(fusion_dim, 32),
+            nn.Linear(fusion_dim, 16),
             nn.ReLU(),
-            nn.Linear(32, 1)
+            nn.Linear(16, 1)
         )
-        self.tanh = nn.Tanh()
 
 
     def forward(self, user_ids, item_ids):
@@ -54,10 +55,5 @@ class NCF(nn.Module):
         mlp_output = self.mlp(user_ids, item_ids)
         combined = torch.cat([gmf_output, mlp_output], dim=-1)
         output = self.output_layer(combined)
-        # Apply tanh and scale to range [0, 5]
-        output = (self.tanh(output) + 1) * 2.5  # Scaling from [-1, 1] to [0, 5]
-        return output
-
-    def predict(self, user_ids, item_ids):
-        with torch.no_grad():
-            return self(user_ids, item_ids)
+        # Scale sigmoid output to [0, 5]
+        return output.squeeze() * 5.0

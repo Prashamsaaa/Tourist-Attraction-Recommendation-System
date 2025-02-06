@@ -1,13 +1,13 @@
 import torch
 
 # Hyperparameters
-NUM_EPOCHS = 5
+NUM_EPOCHS = 30
 BATCH_SIZE = 256
 LEARNING_RATE = 0.001
-LATENT_DIM = 64
+LATENT_DIM = 32
 TOP_K = 5
 NUM_LAYERS = 3
-TEST_SIZE = 0.3
+TEST_SIZE = 0.2
 
 # Device configuration
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
