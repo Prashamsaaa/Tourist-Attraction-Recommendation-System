@@ -27,7 +27,7 @@ class MLP(nn.Module):
             layers.append(nn.Linear(input_dim, layer_size))
             layers.append(nn.BatchNorm1d(layer_size))
             layers.append(nn.ReLU())
-            layers.append(nn.Dropout(0.3))
+            layers.append(nn.Dropout(0.1))
             input_dim = layer_size
 
         self.mlp_layers = nn.Sequential(*layers)
@@ -67,5 +67,5 @@ class NCF(nn.Module):
         mlp_output = self.mlp(user_ids, item_ids)
         combined = torch.cat([gmf_output, mlp_output], dim=-1)
         output = self.output_layer(combined)
-        return torch.sigmoid(output.squeeze()) * 5.0 
-
+        # Scale sigmoid output to [0, 5]
+        return torch.tanh(output.squeeze()) * 2.5 + 2.5
