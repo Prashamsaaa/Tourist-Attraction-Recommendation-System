@@ -55,22 +55,22 @@ class DistilBERTRecommender:
             raise RuntimeError(f"Error generating embeddings for dataset: {e}")
 
     def recommend_places(self, user_id, data, ratings, embeddings, top_n=5):
-        """
-        Recommend places for a user based on their past ratings and content similarity.
+            """
+            Recommend places for a user based on their past ratings and content similarity.
 
-        :param user_id: ID of the user for whom recommendations are generated.
-        :param data: DataFrame containing place information (must include 'ID', 'Name', etc.).
-        :param ratings: DataFrame containing user-item interaction data (must include 'user_id', 'id', and 'rating').
-        :param embeddings: List of precomputed embeddings for all places.
-        :param top_n: Number of recommendations to return (default=5).
-        :return: DataFrame containing top-N recommended places with scores.
-        """
-        try:
+            :param user_id: ID of the user for whom recommendations are generated.
+            :param data: DataFrame containing place information (must include 'ID', 'Name', etc.).
+            :param ratings: DataFrame containing user-item interaction data (must include 'user_id', 'id', and 'rating').
+            :param embeddings: List of precomputed embeddings for all places.
+            :param top_n: Number of recommendations to return (default=5).
+            :return: DataFrame containing top-N recommended places with scores.
+            """
+            # print("distilbert recommendor envoked")
+            # try:
             user_ratings = ratings[ratings['user_id'] == user_id]
             if user_ratings.empty:
                 print(f"No ratings found for user {user_id}.")
                 return pd.DataFrame()
-
             # Build an embedding subset for only the rows in 'data'
             # Assumes 'ID' is 1-based; adjust if needed
             valid_ids = data['ID'].astype(int).unique()
@@ -80,7 +80,7 @@ class DistilBERTRecommender:
                 if idx - 1 < 0 or idx - 1 >= len(embeddings):
                     continue
                 embedding_map[idx] = embeddings[idx - 1]
-
+            print("embedding map",embedding_map)
             recommendations = []
             
             # Iterate over rated places
@@ -110,5 +110,5 @@ class DistilBERTRecommender:
             final_recommendations = pd.concat(recommendations).drop_duplicates(subset=['ID']).nlargest(top_n, 'DistilBERT_Score')
             return final_recommendations[['ID', 'Name', 'Description', 'Province', 'Tags', 'DistilBERT_Score']]
             
-        except Exception as e:
-            raise RuntimeError(f"Error generating recommendations for user {user_id}: {e}")
+        # except Exception as e:
+        #     raise RuntimeError(f"Error generating recommendations for user {user_id}: {e}")
