@@ -2,176 +2,164 @@ import os
 import logging
 import pandas as pd
 import numpy as np
+import torch
 from ContentBased.content_based import ContentBasedRecommender
 from DistilBert.distilbert import DistilBERTRecommender
 from NCF.recommendation import generate_recommendations
 from Hybrid.hybrid_recommender import HybridRecommender
-from NCF.dataset import load_and_preprocess_data, create_train_test_split, create_dataset_and_loaders
-import torch
+from NCF.dataset import load_and_preprocess_data
+from NCF.models import NCF
+from NCF.config import *
 
 logging.basicConfig(level=logging.INFO)
 
+DATA_PATHS = {
+    'content': "Model/Data/PreparedData.csv",
+    'ratings': "Model/Data/all_ratings.csv",
+    'prepared_data': './Model/Data/PreparedData.csv',
+    'tags': './Model/Data/CategorizedTags.json',
+    'embeddings': './Model/models/distilbert_embeddings.npy',
+    'model': './Model/models/model.pth'
+}
+
 def validate_input(user_input, valid_options):
-    """Validate user input against valid options."""
     if user_input not in valid_options:
         raise ValueError(f"Invalid input: '{user_input}'. Please choose from {valid_options}.")
 
 def get_category_tags(content_recommender, category):
-    """Get tags that belong to the selected category."""
     if category in content_recommender.categorized_tags:
         return sorted(content_recommender.categorized_tags[category])
     return []
 
-def main():
-    # === Step 1: Initialize Content-Based Recommender === #
-    print("Initializing Content-Based Recommender...")
-    content_file_path = './Model/Data/PreparedData.csv'
-    categorized_tags_path = './Model/Data/CategorizedTags.json'
+def load_data_and_models():
+    # Content-Based Recommender
+    if not all(os.path.exists(DATA_PATHS[p]) for p in ['prepared_data', 'tags']):
+        raise FileNotFoundError("Required data files are missing.")
+    content_recommender = ContentBasedRecommender(DATA_PATHS['prepared_data'], DATA_PATHS['tags'])
 
-    if not os.path.exists(content_file_path) or not os.path.exists(categorized_tags_path):
-        print("Error: Required data files are missing.")
-        return
-
-    content_recommender = ContentBasedRecommender(content_file_path, categorized_tags_path)
-    print("Content-Based Recommender initialized successfully.\n")
-
-    # === Step 2: Initialize DistilBERT Recommender and Load Embeddings === #
-    print("Initializing DistilBERT Recommender...")
+    # DistilBERT Recommender
     distilbert_recommender = DistilBERTRecommender()
-    descriptions_file = './Model/Data/PreparedData.csv'
-    embeddings_file = './Model/models/distilbert_embeddings.npy'
-
-    if not os.path.exists(descriptions_file):
-        print("Error: Descriptions file is missing.")
-        return
-
-    descriptions = pd.read_csv(descriptions_file)
-
-    # Load pre-computed embeddings if they exist, otherwise generate them
-    if os.path.exists(embeddings_file):
-        print("Loading pre-computed DistilBERT embeddings...")
-        embeddings = np.load(embeddings_file, allow_pickle=True)
-        print("DistilBERT embeddings loaded successfully.\n")
+    descriptions = pd.read_csv(DATA_PATHS['content'])
+    
+    # Load or generate embeddings
+    if os.path.exists(DATA_PATHS['embeddings']):
+        embeddings = np.load(DATA_PATHS['embeddings'], allow_pickle=True)
     else:
-        print("Generating new DistilBERT embeddings...")
         embeddings = distilbert_recommender.generate_all_embeddings(descriptions)
-        os.makedirs('./models', exist_ok=True)
-        np.save(embeddings_file, embeddings)
-        print("DistilBERT embeddings generated and saved successfully.\n")
+        np.save(DATA_PATHS['embeddings'], embeddings)
 
-    # === Step 3: Initialize NCF Recommender === #
-    print("Initializing Neural Collaborative Filtering (NCF) Model...")
+    # NCF Recommender
+    ratings_df, attraction_df, user_encoder, place_encoder = load_and_preprocess_data(
+        DATA_PATHS['ratings'], 
+        DATA_PATHS['content']
+    )
     
-    ratings_path = './Model/Data/all_ratings.csv'
-    attraction_path = './Model/Data/PreparedData.csv'
-    ratings_df, attraction_df, user_encoder, place_encoder = load_and_preprocess_data(ratings_path, attraction_path)
-    train_df, test_df = create_train_test_split(ratings_df, test_size=0.2)
-    train_loader, test_loader = create_dataset_and_loaders(train_df, test_df, batch_size=64)
-
-    # Load pre-trained NCF model
-    ncf_model_path = './Model/models/ncf_model.pth'
-    if not os.path.exists(ncf_model_path):
-        print("Error: Pre-trained NCF model not found.")
-        return
-    ncf_recommender= torch.load(ncf_model_path, weights_only='True')
-    # ncf_recommender = generate_recommendations(ncf_model_path, place_encoder)
-    print("NCF Model loaded successfully.\n")
-
-    # === Step 4: Initialize Hybrid Recommender === #
-    print("Initializing Hybrid Recommender...")
-    hybrid_recommender = HybridRecommender(content_recommender, distilbert_recommender, ncf_recommender)
-    print("Hybrid Recommender initialized successfully.\n")
-
-    # === Step 5: Simulate User Interaction === #
+    ncf_recommender = NCF(
+        num_users=len(user_encoder.classes_), 
+        num_items=len(place_encoder.classes_), 
+        latent_dim=LATENT_DIM
+    )
     
-    provinces = content_recommender.data['Province'].unique()
-    categories = content_recommender.data['Category'].unique()
+    checkpoint = torch.load(DATA_PATHS['model'], map_location='cpu')
+    ncf_recommender.load_state_dict(checkpoint if isinstance(checkpoint, dict) else checkpoint)
 
-    while True:
-        print("\n--- Recommendation System ---")
-        user_type = input("Are you a new user or an old user? (new/old): ").strip().lower()
+    return (content_recommender, distilbert_recommender, ncf_recommender, 
+            descriptions, embeddings, ratings_df, user_encoder, place_encoder)
 
-        if user_type == "new":
-            try:
-                print(f"Available Provinces: {provinces}")
-                province = input("Enter your preferred province: ").strip()
-                validate_input(province, provinces)
+def main():
+    try:
+        (content_recommender, distilbert_recommender, ncf_recommender, 
+         descriptions, embeddings, ratings, user_encoder, place_encoder) = load_data_and_models()
+        
+        hybrid_recommender = HybridRecommender(
+            content_recommender, 
+            distilbert_recommender, 
+            ncf_recommender
+        )
 
-                print(f"\nAvailable Categories: {categories}")
-                category = input("Enter your preferred category: ").strip()
-                validate_input(category, categories)
+        provinces = content_recommender.data['Province'].unique()
+        categories = content_recommender.data['Category'].unique()
 
-                category_tags = get_category_tags(content_recommender, category)
-                if not category_tags:
-                    print(f"No tags found for category '{category}'")
-                    return
+        while True:
+            print("\n--- Recommendation System ---")
+            user_type = input("Are you a new user or an old user? (new/old): ").strip().lower()
 
-                print(f"\nAvailable Tags for {category}:")
-                for i in range(0, len(category_tags), 5):
-                    print(", ".join(category_tags[i:i+5]))
+            if user_type == "new":
+                try:
+                    print(f"Available Provinces: {provinces}")
+                    province = input("Enter your preferred province: ").strip()
+                    validate_input(province, provinces)
 
-                tags_input = input("\nEnter your preferred tags (comma-separated): ").strip()
-                tags = [tag.strip() for tag in tags_input.split(',') if tag.strip()]
+                    print(f"\nAvailable Categories: {categories}")
+                    category = input("Enter your preferred category: ").strip()
+                    validate_input(category, categories)
 
-                invalid_tags = [tag for tag in tags if tag not in category_tags]
-                if invalid_tags:
-                    raise ValueError(f"Invalid tags: {invalid_tags}. Please choose from the available tags.")
+                    category_tags = get_category_tags(content_recommender, category)
+                    if not category_tags:
+                        print(f"No tags found for category '{category}'")
+                        continue
 
-                recommendations = hybrid_recommender.recommend_for_new_user(
-                    province=province,
-                    category=category,
-                    tags=tags,
-                )
+                    print(f"\nAvailable Tags for {category}:")
+                    for i in range(0, len(category_tags), 5):
+                        print(", ".join(category_tags[i:i+5]))
 
-                print("\n--- Recommendations for New User ---")
-                if recommendations.empty:
-                    print("No recommendations found for your preferences.")
-                else:
-                    print(recommendations.to_string(index=False))
+                    tags_input = input("\nEnter your preferred tags (comma-separated): ").strip()
+                    tags = [tag.strip() for tag in tags_input.split(',') if tag.strip()]
 
-            except ValueError as e:
-                print(f"Error: {e}")
+                    invalid_tags = [tag for tag in tags if tag not in category_tags]
+                    if invalid_tags:
+                        raise ValueError(f"Invalid tags: {invalid_tags}")
 
-        elif user_type == "old":
-            try:
-                user_id = int(input("Enter your User ID: "))
-                if user_id < 0:
-                    raise ValueError("User ID must be a positive number")
+                    recommendations = hybrid_recommender.recommend_for_new_user(
+                        province=province,
+                        category=category,
+                        tags=tags
+                    )
 
-                print(f"\nAvailable Provinces: {provinces}")
-                preferred_province = input("Enter your preferred province: ").strip()
-                validate_input(preferred_province, provinces)
+                    if recommendations.empty:
+                        print("\nNo recommendations found for your preferences.")
+                    else:
+                        print("\n--- Recommendations for New User ---")
+                        print(recommendations.to_string(index=False))
 
-                ratings_file = './Model/Data/all_ratings.csv'
-                if not os.path.exists(ratings_file):
-                    print("Error: Ratings file is missing.")
-                    continue
+                except ValueError as e:
+                    print(f"Error: {e}")
 
-                ratings = pd.read_csv(ratings_file)
+            elif user_type == "old":
+                try:
+                    user_id = int(input("Enter your User ID: "))
+                    if user_id < 0:
+                        raise ValueError("User ID must be a positive number")
 
-                print("\nGenerating recommendations...")
-                recommendations = hybrid_recommender.recommend_for_old_user(
-                    user_id=user_id,
-                    embeddings=embeddings,
-                    descriptions=descriptions,
-                    ratings=ratings,
-                    preferred_province=preferred_province,
-                )
-                print(recommendations)
-                print("\n--- Recommendations for Old User ---")
-                if recommendations.empty:
-                    print("No recommendations found for your preferences.")
-                else:
-                    print("\nHere are your personalized recommendations:")
-                    print(recommendations.to_string(index=False))
+                    print(f"\nAvailable Provinces: {provinces}")
+                    preferred_province = input("Enter your preferred province: ").strip()
+                    validate_input(preferred_province, provinces)
 
-            except ValueError as e:
-                print(f"Input Error: {e}")
-            except Exception as e:
-                print(f"An unexpected error occurred: {e}")
-    
+                    recommendations = hybrid_recommender.recommend_for_old_user(
+                        user_id=user_id,
+                        embeddings=embeddings,
+                        descriptions=descriptions,
+                        ratings=ratings,
+                        preferred_province=preferred_province,
+                        user_encoder=user_encoder,
+                        place_encoder=place_encoder
+                    )
+
+                    if recommendations.empty:
+                        print("\nNo recommendations found for your preferences.")
+                    else:
+                        print("\n--- Recommendations for Old User ---")
+                        print(recommendations.to_string(index=False))
+
+                except ValueError as e:
+                    print(f"Input Error: {e}")
+                except Exception as e:
+                    print(f"An unexpected error occurred: {e}")
             else:
                 print("Invalid user type. Please enter 'new' or 'old'.")
-                
+
+    except Exception as e:
+        print(f"System Error: {e}")
+
 if __name__ == "__main__":
     main()

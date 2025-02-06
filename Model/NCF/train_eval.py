@@ -98,8 +98,8 @@ def train_model(
         print(f"Recall@10: {recall:.4f}")
         print(f"RMSE: {metrics['rmses'][-1]:.4f}, MAE: {metrics['maes'][-1]:.4f}")
 
-        print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
-        torch.save(model, MODEL_SAVE_PATH)
+    print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
+    torch.save(model.state_dict(), MODEL_SAVE_PATH) 
 
     return train_losses, test_losses, metrics
 
