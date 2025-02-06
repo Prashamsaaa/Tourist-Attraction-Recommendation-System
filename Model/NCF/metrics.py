@@ -3,23 +3,12 @@ import torch
 
 
 def calculate_hit_rate(recommended_items, actual_items, k=None):
-    """
-    Calculate Hit Rate @ K
-    Args:
-        recommended_items: list of recommended item IDs
-        actual_items: list of actual/relevant item IDs
-        k: number of recommendations to consider (optional)
-    """
+    """Calculate if any recommended item is in the actual items"""
     if isinstance(actual_items, (int, np.integer)):
         actual_items = [int(actual_items)]
-    
-    if k is not None:
-        recommended_items = recommended_items[:k]
-    
-    hits = len(set(recommended_items) & set(actual_items))
-    total_relevant = len(actual_items)
-    
-    return hits / total_relevant if total_relevant > 0 else 0.0
+
+    hit = len(set(recommended_items[:k]) & set(actual_items)) > 0
+    return int(hit)
 
 
 
