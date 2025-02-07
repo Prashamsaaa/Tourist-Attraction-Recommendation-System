@@ -40,13 +40,16 @@ def load_data_and_models():
     # DistilBERT Recommender
     distilbert_recommender = DistilBERTRecommender()
     descriptions = pd.read_csv(DATA_PATHS['content'])
-    
     # Load or generate embeddings
     if os.path.exists(DATA_PATHS['embeddings']):
         embeddings = np.load(DATA_PATHS['embeddings'], allow_pickle=True)
     else:
         embeddings = distilbert_recommender.generate_all_embeddings(descriptions)
-        np.save(DATA_PATHS['embeddings'], embeddings)
+    # np.save(DATA_PATHS['embeddings'], embeddings)
+    descriptions['embeddings'] = embeddings.tolist()
+    # print(descriptions['embeddings'])
+    # descriptions.to_csv(DATA_PATHS['content'])
+    # print("Embeddings saved")
 
     # NCF Recommender
     ratings_df, attraction_df, user_encoder, place_encoder = load_and_preprocess_data(
@@ -64,12 +67,12 @@ def load_data_and_models():
     ncf_recommender.load_state_dict(checkpoint if isinstance(checkpoint, dict) else checkpoint)
 
     return (content_recommender, distilbert_recommender, ncf_recommender, 
-            descriptions, embeddings, ratings_df, user_encoder, place_encoder)
+            descriptions, ratings_df, user_encoder, place_encoder)
 
 def main():
     try:
         (content_recommender, distilbert_recommender, ncf_recommender, 
-         descriptions, embeddings, ratings, user_encoder, place_encoder) = load_data_and_models()
+         descriptions, ratings, user_encoder, place_encoder) = load_data_and_models()
         
         hybrid_recommender = HybridRecommender(
             content_recommender, 
@@ -137,7 +140,6 @@ def main():
 
                     recommendations = hybrid_recommender.recommend_for_old_user(
                         user_id=user_id,
-                        embeddings=embeddings,
                         descriptions=descriptions,
                         ratings=ratings,
                         preferred_province=preferred_province,

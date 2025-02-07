@@ -55,18 +55,18 @@ class HybridRecommender:
             logging.error(f"Error generating recommendations for new user: {e}")
             return pd.DataFrame()
 
-    def recommend_for_old_user(self, user_id, embeddings, descriptions, ratings, preferred_province, user_encoder, place_encoder):
-        """
-        Generate hybrid recommendations for old users by combining NCF and DistilBERT scores.
+    def recommend_for_old_user(self, user_id, descriptions, ratings, preferred_province, user_encoder, place_encoder):
+            """
+            Generate hybrid recommendations for old users by combining NCF and DistilBERT scores.
 
-        :param user_id: ID of the user for whom recommendations are generated.
-        :param embeddings: Precomputed embeddings for all descriptions.
-        :param descriptions: DataFrame containing place descriptions.
-        :param ratings: DataFrame containing user-item interaction data.
-        :param preferred_province: User's preferred province to filter recommendations.
-        :return: DataFrame containing hybrid recommendations for old users.
-        """
-        try:
+            :param user_id: ID of the user for whom recommendations are generated.
+            :param embeddings: Precomputed embeddings for all descriptions.
+            :param descriptions: DataFrame containing place descriptions.
+            :param ratings: DataFrame containing user-item interaction data.
+            :param preferred_province: User's preferred province to filter recommendations.
+            :return: DataFrame containing hybrid recommendations for old users.
+            """
+        # try:
             # Step 1: Filter descriptions by province
             filtered_descriptions = descriptions[
                     descriptions['Province'].str.lower() == preferred_province.lower()
@@ -102,6 +102,7 @@ class HybridRecommender:
             print("NCF RECOMMENDATIONS GENERATION DONE")
             # return ncf_df
             # Step 3: Get DistilBERT recommendations using filtered descriptions and embeddings
+            embeddings = filtered_descriptions['embeddings']
             distilbert_recs = self.distilbert_recommender.recommend_places(
                 user_id=user_id,
                 data=filtered_descriptions,
@@ -109,7 +110,7 @@ class HybridRecommender:
                 embeddings=embeddings,
                 top_n=10
             )
-            print("I HAVE NO IDEA WHAT IS GOING ON")
+            print("DISTIL BERT RECOMMEDATION DONEEE")
             if distilbert_recs.empty and ncf_df.empty:
                 print(f"No recommendations found for user {user_id} in province {preferred_province}")
                 return pd.DataFrame()
@@ -150,6 +151,6 @@ class HybridRecommender:
 
             return result
 
-        except Exception as e:
-            logging.error(f"Error generating hybrid recommendations for user {user_id}: {e}")
-            return pd.DataFrame()
+        # except Exception as e:
+        #     logging.error(f"Error generating hybrid recommendations for user {user_id}: {e}")
+        #     return pd.DataFrame()

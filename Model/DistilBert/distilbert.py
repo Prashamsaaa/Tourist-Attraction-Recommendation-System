@@ -72,43 +72,60 @@ class DistilBERTRecommender:
                 print(f"No ratings found for user {user_id}.")
                 return pd.DataFrame()
             # Build an embedding subset for only the rows in 'data'
+            print(user_ratings)
             # Assumes 'ID' is 1-based; adjust if needed
-            valid_ids = data['ID'].astype(int).unique()
+            valid_ids = data['id'].astype(int).unique()
+            print(f"valid ids: {len(valid_ids)}")
             embedding_map = {}
-            for idx in valid_ids:
+            # embeddings = np.array(embeddings)
+            for i, idx in enumerate(valid_ids):
                 # Skip IDs out of range
-                if idx - 1 < 0 or idx - 1 >= len(embeddings):
+                if i >= len(embeddings):
+                    print(f"ID out of range {i}")
                     continue
                 embedding_map[idx] = embeddings[idx - 1]
-            print("embedding map",embedding_map)
+            print("embedding map",len(embedding_map))
+
+            # First convert all embeddings in the map to numpy arrays
+            for idx in embedding_map:
+                embedding_map[idx] = np.array(embedding_map[idx])
+
+            # # Verify the conversion
+            # first_key = list(embedding_map.keys())[0]
+            # print(f"Type of embedding: {type(embedding_map[first_key])}")
+            # print(f"Shape of embedding: {embedding_map[first_key].shape}")
+
             recommendations = []
             
             # Iterate over rated places
             for _, row in user_ratings.iterrows():
                 place_id = row['id']
+                print(f"place_id: {place_id}")
                 if place_id not in embedding_map:
+                    print('place_id not in embedding_map')
+                    return "User has not rated place for given preference"
                     continue
-
+                
                 place_embedding = embedding_map[place_id].reshape(1, -1)
 
                 # Create a matrix of embeddings to match 'data' length
-                # Filter out rows whose ID is missing in embedding_map
-                filtered_data = data[data['ID'].isin(embedding_map.keys())].copy()
-                embedding_subset = [embedding_map[item_id] for item_id in filtered_data['ID']]
+                # # Filter out rows whose ID is missing in embedding_map
+                filtered_data = data[data['id'].isin(embedding_map.keys())].copy()
+                # filtered_data = data
+                embedding_subset = [embedding_map[item_id] for item_id in filtered_data['id']]
                 embedding_subset = np.vstack(embedding_subset)
-
                 similarities = cosine_similarity(place_embedding, embedding_subset).flatten()
                 filtered_data['Similarity_Score'] = similarities
-
+                print("UNDERSTAND THIS")
                 # Weighted combination of similarity and rating
                 filtered_data['Recommendation_Score'] = 0.7 * filtered_data['Similarity_Score'] + 0.3 * row['rating']
 
                 recommended_places = filtered_data.nlargest(top_n, 'Recommendation_Score').copy()
                 recommended_places.rename(columns={'Recommendation_Score': 'DistilBERT_Score'}, inplace=True)
                 recommendations.append(recommended_places)
-            
-            final_recommendations = pd.concat(recommendations).drop_duplicates(subset=['ID']).nlargest(top_n, 'DistilBERT_Score')
-            return final_recommendations[['ID', 'Name', 'Description', 'Province', 'Tags', 'DistilBERT_Score']]
+            final_recommendations = pd.concat(recommendations).drop_duplicates(subset=['id']).nlargest(top_n, 'DistilBERT_Score')
+            print(final_recommendations)
+            return final_recommendations[['id', 'Name', 'Description', 'Province', 'Tags', 'DistilBERT_Score']]
             
         # except Exception as e:
         #     raise RuntimeError(f"Error generating recommendations for user {user_id}: {e}")
