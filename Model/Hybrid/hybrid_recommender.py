@@ -56,7 +56,7 @@ class HybridRecommender:
             return pd.DataFrame()
 
     def recommend_for_old_user(self, user_id, descriptions, ratings, preferred_province, user_encoder, place_encoder):
-            """
+        """
             Generate hybrid recommendations for old users by combining NCF and DistilBERT scores.
 
             :param user_id: ID of the user for whom recommendations are generated.
@@ -66,7 +66,7 @@ class HybridRecommender:
             :param preferred_province: User's preferred province to filter recommendations.
             :return: DataFrame containing hybrid recommendations for old users.
             """
-        # try:
+        try:
             # Step 1: Filter descriptions by province
             filtered_descriptions = descriptions[
                     descriptions['Province'].str.lower() == preferred_province.lower()
@@ -100,6 +100,7 @@ class HybridRecommender:
             
             ncf_df = pd.DataFrame(ncf_recs, columns=['id', 'confidence'])
             print("NCF RECOMMENDATIONS GENERATION DONE")
+            print(ncf_df.head())
             # return ncf_df
             # Step 3: Get DistilBERT recommendations using filtered descriptions and embeddings
             embeddings = filtered_descriptions['embeddings']
@@ -118,39 +119,40 @@ class HybridRecommender:
             # Step 4: Merge NCF and DistilBERT recommendations
             combined_df = distilbert_recs.merge(
                 ncf_df,
-                left_on='ID',
-                right_on='item_id',
+                left_on='id',
+                right_on='id',
                 how='outer'
             )
+            # print(combined_df.head())
 
             # Normalize scores between 0 and 1 (for both NCF and DistilBERT)
-            for col in ['score', 'DistilBERT_Score']:
+            for col in ['confidence', 'DistilBERT_Score']:
                 if col in combined_df.columns:
                     score_range = combined_df[col].max() - combined_df[col].min()
                     if score_range > 0:
                         combined_df[f'{col}_norm'] = (combined_df[col] - combined_df[col].min()) / score_range
                     else:
                         combined_df[f'{col}_norm'] = 0
-
+            print(combined_df.head())
             # Calculate final score as a weighted combination of NCF and DistilBERT scores
             combined_df['Final_Score'] = (
                 self.distilbert_weight * combined_df.get('DistilBERT_Score_norm', 0).fillna(0) +
-                self.ncf_weight * combined_df.get('score_norm', 0).fillna(0)
+                self.ncf_weight * combined_df.get('confidence_norm', 0).fillna(0)
             )
 
             # Filter results by preferred province (if necessary)
             combined_df = combined_df[combined_df['Province'].str.lower() == preferred_province.lower()]
-
+            print(combined_df.info())
             if combined_df.empty:
                 return pd.DataFrame()
 
             # Return top 5 recommendations with relevant information
             result = combined_df.nlargest(5, 'Final_Score')[
-                ['ID', 'Name', 'Province', 'Category', 'Final_Score']
+                ['id', 'Name', 'Province', 'Tags', 'Final_Score']
             ]
 
             return result
 
-        # except Exception as e:
-        #     logging.error(f"Error generating hybrid recommendations for user {user_id}: {e}")
-        #     return pd.DataFrame()
+        except Exception as e:
+            logging.error(f"Error generating hybrid recommendations for user {user_id}: {e}")
+            return pd.DataFrame()
