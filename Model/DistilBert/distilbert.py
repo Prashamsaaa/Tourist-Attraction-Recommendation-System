@@ -55,7 +55,7 @@ class DistilBERTRecommender:
             raise RuntimeError(f"Error generating embeddings for dataset: {e}")
 
     def recommend_places(self, user_id, data, ratings, embeddings, top_n=5):
-            """
+        """
             Recommend places for a user based on their past ratings and content similarity.
 
             :param user_id: ID of the user for whom recommendations are generated.
@@ -66,7 +66,7 @@ class DistilBERTRecommender:
             :return: DataFrame containing top-N recommended places with scores.
             """
             # print("distilbert recommendor envoked")
-            # try:
+        try:
             user_ratings = ratings[ratings['user_id'] == user_id]
             if user_ratings.empty:
                 print(f"No ratings found for user {user_id}.")
@@ -127,5 +127,5 @@ class DistilBERTRecommender:
             print(final_recommendations)
             return final_recommendations[['id', 'Name', 'Description', 'Province', 'Tags', 'DistilBERT_Score']]
             
-        # except Exception as e:
-        #     raise RuntimeError(f"Error generating recommendations for user {user_id}: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Error generating recommendations for user {user_id}: {e}")

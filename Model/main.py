@@ -50,13 +50,12 @@ def load_data_and_models():
     # print(descriptions['embeddings'])
     # descriptions.to_csv(DATA_PATHS['content'])
     # print("Embeddings saved")
-
     # NCF Recommender
     ratings_df, attraction_df, user_encoder, place_encoder = load_and_preprocess_data(
         DATA_PATHS['ratings'], 
         DATA_PATHS['content']
     )
-    
+    print(len(ratings_df))
     ncf_recommender = NCF(
         num_users=len(user_encoder.classes_), 
         num_items=len(place_encoder.classes_), 
@@ -140,7 +139,7 @@ def main():
 
                     recommendations = hybrid_recommender.recommend_for_old_user(
                         user_id=user_id,
-                        descriptions=descriptions,
+                        descriptions_all=descriptions,
                         ratings=ratings,
                         preferred_province=preferred_province,
                         user_encoder=user_encoder,

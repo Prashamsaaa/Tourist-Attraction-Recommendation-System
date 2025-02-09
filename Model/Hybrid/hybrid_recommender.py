@@ -1,9 +1,11 @@
 import logging
 import pandas as pd
+import numpy as np
+import torch
 from NCF.recommendation import generate_recommendations
 from sklearn.preprocessing import LabelEncoder
 from NCF.dataset import load_and_preprocess_data
-
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 class HybridRecommender:
@@ -55,7 +57,7 @@ class HybridRecommender:
             logging.error(f"Error generating recommendations for new user: {e}")
             return pd.DataFrame()
 
-    def recommend_for_old_user(self, user_id, descriptions, ratings, preferred_province, user_encoder, place_encoder):
+    # def recommend_for_old_user(self, user_id, descriptions, ratings, preferred_province, user_encoder, place_encoder):
         """
             Generate hybrid recommendations for old users by combining NCF and DistilBERT scores.
 
@@ -89,7 +91,7 @@ class HybridRecommender:
             # ratings['id'] = place_encoder.fit_transform(ratings['id'])
 
 
-                # Before passing to model, verify indices are within range
+            # Before passing to model, verify indices are within range
             print(f"Embedding size: {self.ncf_recommender.gmf.item_embedding.num_embeddings}")
 
             encoded_user_id = user_encoder.transform([user_id])[0]
@@ -156,3 +158,107 @@ class HybridRecommender:
         except Exception as e:
             logging.error(f"Error generating hybrid recommendations for user {user_id}: {e}")
             return pd.DataFrame()
+        
+        
+    def recommend_for_old_user(self, user_id, descriptions_all, ratings, preferred_province, user_encoder, place_encoder):
+        """
+        Generate hybrid recommendations by first combining scores before selecting top-k
+        """
+            # 2. Filter using vectorized operations
+        descriptions = descriptions_all[
+        descriptions_all['ID'].astype(str).str.lower()
+        .isin(ratings['id'].astype(str).str.lower())
+    ]
+
+        # Get valid original IDs across all provinces
+        valid_original_ids = descriptions[
+            descriptions['ID'].astype(int).isin(ratings['id'].astype(int))
+        ]['ID'].tolist()
+        print(len(valid_original_ids))
+        # Get already rated items (all provinces)
+        user_ratings = ratings[(ratings['user_id'] == user_id)]
+        rated_ids = user_ratings['id'].tolist()
+        
+        encoded_user_id = user_encoder.transform([user_id])[0]
+        num_items = len(place_encoder.classes_)
+        print(num_items)
+        # Get NCF scores for all items
+        try:
+            with torch.no_grad():
+                user_vector = torch.tensor([user_id], dtype=torch.long).repeat(num_items)
+                all_item_ids = torch.arange(num_items, dtype=torch.long)
+                ncf_scores = self.ncf_recommender(user_vector, all_item_ids).squeeze()
+        except Exception as e:
+            print(f"NCF failed: {str(e)}")
+            ncf_scores = np.zeros(num_items)
+
+        # Get DistilBERT scores for all items
+        embedding_map = dict(zip(descriptions['ID'], descriptions['embeddings']))
+        distilbert_scores = np.zeros(len(valid_original_ids))
+
+        if not user_ratings.empty:
+            try:
+                for _, row in user_ratings.iterrows():
+                    place_id = row['id']
+                    if place_id not in embedding_map:
+                        continue
+                    
+                    place_embedding = np.array(embedding_map[place_id]).reshape(1, -1)
+                    embedding_subset = [np.array(embedding_map[item_id]) for item_id in valid_original_ids]
+                    embedding_subset = np.vstack(embedding_subset)
+                    
+                    similarities = cosine_similarity(place_embedding, embedding_subset).flatten()
+                    scores = 0.7 * similarities + 0.3 * row['rating']
+                    distilbert_scores = np.maximum(distilbert_scores, scores)
+                    
+            except Exception as e:
+                print(f"DistilBERT scoring failed: {str(e)}")
+        print("DISTIL BERT DONE")
+        print(len(ncf_scores))
+
+        #    Create scoring dataframe with ID and scores
+        scores = pd.DataFrame({
+    'id': valid_original_ids,  # IDs that exist in both datasets
+    'ncf_score': ncf_scores[:len(valid_original_ids)],
+    'distilbert_score': distilbert_scores[:len(valid_original_ids)]
+        })
+
+    # Merge with FULL descriptions dataframe using inner join
+        score_df = scores.merge(
+    descriptions,
+    left_on='id',
+    right_on='ID',  # Match descriptions' ID column
+    how='inner'
+    ).drop(columns=['ID']) 
+
+        # Apply province filtering after scoring
+        province_lower = preferred_province.lower()
+        score_df = score_df[score_df['Province'].str.lower() == province_lower]
+        
+        if score_df.empty:
+            print(f"No attractions in {preferred_province}")
+            return pd.DataFrame()
+
+        # Exclude rated items
+        score_df = score_df[~score_df['id'].isin(rated_ids)]
+
+        # Normalize scores
+        for col in ['ncf_score', 'distilbert_score']:
+            col_min = score_df[col].min()
+            col_max = score_df[col].max()
+            if col_max - col_min > 0:
+                score_df[f'{col}_norm'] = (score_df[col] - col_min) / (col_max - col_min)
+            else:
+                score_df[f'{col}_norm'] = 0.5
+
+        # Calculate weighted scores
+        score_df['final_score'] = (
+            self.ncf_weight * score_df['ncf_score_norm'] +
+            self.distilbert_weight * score_df['distilbert_score_norm']
+        )
+        # Get top 5 entries by final_score
+        top_5_scores = score_df.nlargest(5, 'final_score').copy()
+
+        result = top_5_scores[['id', 'Name', 'Province', 'Tags','Description', 'final_score']]
+
+        return result.reset_index(drop=True)
