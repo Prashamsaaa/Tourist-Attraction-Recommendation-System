@@ -27,7 +27,7 @@ class MLP(nn.Module):
             layers.append(nn.Linear(input_dim, layer_size))
             layers.append(nn.BatchNorm1d(layer_size))
             layers.append(nn.ReLU())
-            layers.append(nn.Dropout(0.1))
+            layers.append(nn.Dropout(DROPOUT_RATE))
             input_dim = layer_size
 
         self.mlp_layers = nn.Sequential(*layers)

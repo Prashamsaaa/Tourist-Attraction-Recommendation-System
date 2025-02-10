@@ -32,6 +32,8 @@ def train_model(
         "maes": [],
     }
 
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -45,7 +47,6 @@ def train_model(
 
             optimizer.zero_grad()
             predictions = model(user_ids, item_ids)
-            # print(f"Min value: {predictions.min()}, Max value: {predictions.max()}")
 
             loss = criterion(predictions.squeeze(), ratings)
             loss.backward()
@@ -98,10 +99,30 @@ def train_model(
         print(f"Recall@10: {recall:.4f}")
         print(f"RMSE: {metrics['rmses'][-1]:.4f}, MAE: {metrics['maes'][-1]:.4f}")
 
+        scheduler.step()
+
+     # Save last epoch's metrics to the config
+    last_epoch_metrics = {
+        "epoch": num_epochs,
+        "train_loss": avg_train_loss,
+        "test_loss": avg_test_loss,
+        "hit_rate": hit_rate,
+        "ndcg": ndcg,
+        "precision": precision,
+        "recall": recall,
+        "rmse": metrics["rmses"][-1],
+        "mae": metrics["maes"][-1],
+    }
+
+    # Save these results to config file
+    save_config(last_epoch_metrics)
+
     print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
     torch.save(model.state_dict(), MODEL_SAVE_PATH) 
 
     return train_losses, test_losses, metrics
+
+
 
 
 def evaluate_topn(model, test_loader, num_items, top_k, device):
