@@ -113,60 +113,57 @@ def evaluate_topn(model, test_loader, num_items, top_k, device):
     hits, ndcgs, precisions, recalls = [], [], [], []
 
     with torch.no_grad():
-        all_user_ids, all_item_ids, all_ratings = [], [], []
-        
-        # Collect all user, item, and rating pairs for evaluation
         for batch in tqdm(test_loader, desc="Evaluating"):
             user_ids, item_ids, ratings = (t.to(device) for t in batch)
-            all_user_ids.append(user_ids)
-            all_item_ids.append(item_ids)
-            all_ratings.append(ratings)
 
-        # Concatenate all batches for predictions
-        all_user_ids = torch.cat(all_user_ids)
-        all_item_ids = torch.cat(all_item_ids)
-        all_ratings = torch.cat(all_ratings)
+            # Identify positive items based on the threshold
+            positive_mask = ratings >= 4
+            positive_items = item_ids[positive_mask].cpu().numpy().flatten().tolist()
 
-        # Generate all predictions at once for the whole batch
-        predictions = model(all_user_ids, all_item_ids).squeeze()
-
-        # Evaluate each user in the batch
-        for idx in range(len(all_user_ids)):
-            user_id = all_user_ids[idx].item()
-            item_id = all_item_ids[idx].item()
-            pred = predictions[idx].item()
-            rating = all_ratings[idx].item()  # Get actual rating for the item
-
-            # Assuming relevant items are those with a rating >= 4 (adjust based on your dataset)
-            positive_mask = all_ratings >= 4  # Mask for relevant items (you can adjust this threshold)
-            positive_items = all_item_ids[positive_mask].cpu().numpy().flatten().tolist()
-
-            if not positive_items:
+            # Ensure positive_items is not empty before proceeding
+            if len(positive_items) == 0:
                 continue  # Skip if no relevant items are found
 
-            # Get top-K recommended items based on predictions
-            top_items = np.argsort(predictions.cpu().numpy())[-top_k:][::-1]
+            # Generate predictions for all user-item pairs in the batch
+            all_items = torch.arange(num_items, device=device).unsqueeze(0).expand(len(user_ids), num_items)
+            user_ids_batch = user_ids.unsqueeze(1).expand_as(all_items)  # Replicate user_ids for all items
+            predictions = model(user_ids_batch.flatten(), all_items.flatten()).view(len(user_ids), num_items)
 
-            # Calculate Hit Rate: Whether a relevant item is in the top-K recommended items
-            hit_rate = 1 if item_id in top_items else 0
-            hits.append(hit_rate)
+            # Process each user's predictions
+            for idx, preds in enumerate(predictions):
+                top_items = np.argsort(preds.cpu().numpy())[-top_k:][::-1]
+                actual_items = positive_items
 
-            # Calculate NDCG: Normalize Discounted Cumulative Gain
-            ndcg = calculate_ndcg(top_items, positive_items, ratings.cpu().numpy(), k = top_k)
-            ndcgs.append(ndcg)
+                # Handle the case where there is only one relevant item
+                if isinstance(actual_items, (np.ndarray, list)):
+                    actual_items = list(actual_items)  # Ensure it's a list
+                else:
+                    actual_items = [int(actual_items)]  # Convert single item to list
 
-            # Calculate Precision: Proportion of relevant items in top-K
-            precision = len(set(top_items) & set(positive_items)) / top_k
-            precisions.append(precision)
+                # Calculate Hit Rate
+                hit_rate = calculate_hit_rate(top_items, actual_items)
+                hits.append(hit_rate)
 
-            # Calculate Recall: Proportion of relevant items found in top-K
-            recall = len(set(top_items) & set(positive_items)) / len(positive_items) if positive_items else 0
-            recalls.append(recall)
+                # Calculate NDCG
+                relevant_ratings = [ratings[i].cpu().item() for i in range(len(item_ids)) if item_ids[i] in actual_items]
+                ndcg = calculate_ndcg(top_items, actual_items, relevant_ratings, top_k)
+                ndcgs.append(ndcg)
 
-    # Return average of all metrics
-    hit_rate = np.mean(hits) if hits else 0
-    mean_ndcg = np.mean(ndcgs) if ndcgs else 0
-    mean_precision = np.mean(precisions) if precisions else 0
-    mean_recall = np.mean(recalls) if recalls else 0
+                # Calculate Precision and Recall
+                precision, recall = calculate_precision_recall(top_items, actual_items, top_k)
+                precisions.append(precision)
+                recalls.append(recall)
+
+    # If no hits were recorded, return zero for all metrics
+    if len(hits) == 0:
+        return 0.0, 0.0, 0.0, 0.0
+
+    # Calculate final metrics
+    hit_rate = np.mean(hits)
+    mean_ndcg = np.mean(ndcgs)
+    mean_precision = np.mean(precisions)
+    mean_recall = np.mean(recalls)
 
     return hit_rate, mean_ndcg, mean_precision, mean_recall
+
+

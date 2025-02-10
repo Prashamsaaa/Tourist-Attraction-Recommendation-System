@@ -3,8 +3,8 @@ import torch
 # Hyperparameters
 NUM_EPOCHS = 20
 
-BATCH_SIZE = 128
-LEARNING_RATE = 0.001
+BATCH_SIZE = 8
+LEARNING_RATE = 0.01
 LATENT_DIM = 32
 
 TOP_K = 5

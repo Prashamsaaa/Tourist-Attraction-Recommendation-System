@@ -3,20 +3,45 @@ import torch
 
 
 def calculate_hit_rate(recommended_items, actual_items, k=None):
+    """Calculate the fraction of recommended items that are in the actual items."""
+    
+    # Convert actual_items to a list if it's a single integer
     if isinstance(actual_items, (int, np.integer)):
         actual_items = [int(actual_items)]
+    
+    # Convert NumPy arrays to lists if needed
+    if isinstance(recommended_items, np.ndarray):
+        recommended_items = recommended_items.tolist()
+    if isinstance(actual_items, np.ndarray):
+        actual_items = actual_items.tolist()
 
     # Handle edge case when no recommended items or actual items
     if not recommended_items or not actual_items:
-        return 0
+        return 0.0
+    print("Recommended items:",recommended_items)
+    print("Actual items:", actual_items)
 
-    hit = len(set(recommended_items[:k]) & set(actual_items)) > 0
-    return int(hit)
+    # Ensure k is valid
+    if k is None or k > len(recommended_items):
+        k = len(recommended_items)
+
+    # Compute the number of hits (items in both recommended and actual sets)
+    hits = len(set(recommended_items[:k]) & set(actual_items))
+
+    # Avoid division by zero
+    return hits / k if k > 0 else 0.0
 
 
 def calculate_ndcg(recommended_items, actual_items, ratings, k):
+    """Calculate Normalized Discounted Cumulative Gain (NDCG)"""
     if isinstance(actual_items, (int, np.integer)):
         actual_items = [int(actual_items)]
+
+    # Convert NumPy arrays to lists if needed
+    if isinstance(recommended_items, np.ndarray):
+        recommended_items = recommended_items.tolist()
+    if isinstance(actual_items, np.ndarray):
+        actual_items = actual_items.tolist()
 
     # Relevance score based on ratings: higher rating means more relevant
     actual_relevance = {item: rating for item, rating in zip(actual_items, ratings)}
@@ -36,15 +61,25 @@ def calculate_ndcg(recommended_items, actual_items, ratings, k):
 
 
 def calculate_precision_recall(recommended_items, actual_items, k):
+    """Calculate Precision and Recall for the top-K recommended items."""
     if isinstance(actual_items, (int, np.integer)):
         actual_items = [int(actual_items)]
 
-    k = min(
-        k, len(recommended_items)
-    )  # Ensure k does not exceed length of recommended items
+    # Convert NumPy arrays to lists if needed
+    if isinstance(recommended_items, np.ndarray):
+        recommended_items = recommended_items.tolist()
+    if isinstance(actual_items, np.ndarray):
+        actual_items = actual_items.tolist()
+
+    k = min(k, len(recommended_items))  # Ensure k does not exceed length of recommended items
     relevant = set(recommended_items[:k]) & set(actual_items)
+
+    # Precision: fraction of recommended items that are relevant
     precision = len(relevant) / k if k > 0 else 0
+
+    # Recall: fraction of relevant items that are recommended
     recall = len(relevant) / len(actual_items) if actual_items else 0
+
     return precision, recall
 
 
@@ -53,7 +88,8 @@ def calculate_rmse(predictions, targets):
     if predictions.size(0) == 0 or targets.size(0) == 0:
         return float("nan")  # or return 0.0 if that fits your use case
 
-    return torch.sqrt(torch.mean((predictions - targets) ** 2)).item()
+    mse = torch.mean((predictions - targets).cpu() ** 2).item()
+    return np.sqrt(mse)
 
 
 def calculate_mae(predictions, targets):
@@ -61,4 +97,5 @@ def calculate_mae(predictions, targets):
     if predictions.size(0) == 0 or targets.size(0) == 0:
         return float("nan")
 
-    return torch.mean(torch.abs(predictions - targets)).item()
+    mae = torch.mean(torch.abs(predictions.cpu() - targets.cpu())).item()
+    return mae
