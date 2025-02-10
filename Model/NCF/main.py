@@ -148,7 +148,7 @@ def main():
     )
 
     # Generate recommendations
-    original_user_id = 150
+    original_user_id = 5
     encoded_user_id = user_encoder.transform([original_user_id])[0]
     recommendations = generate_recommendations(
         model_manager.model,

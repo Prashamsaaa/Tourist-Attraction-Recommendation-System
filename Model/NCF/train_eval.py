@@ -32,6 +32,8 @@ def train_model(
         "maes": [],
     }
 
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -96,6 +98,9 @@ def train_model(
         print(f"Precision@10: {precision:.4f}")
         print(f"Recall@10: {recall:.4f}")
         print(f"RMSE: {metrics['rmses'][-1]:.4f}, MAE: {metrics['maes'][-1]:.4f}")
+
+        scheduler.step()
+
      # Save last epoch's metrics to the config
     last_epoch_metrics = {
         "epoch": num_epochs,

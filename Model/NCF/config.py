@@ -4,17 +4,17 @@ import json
 # Hyperparameters
 NUM_EPOCHS = 20
 
-BATCH_SIZE = 32
-LEARNING_RATE = 0.01
+BATCH_SIZE = 256
+LEARNING_RATE = 0.001
 LATENT_DIM = 64
 
 TOP_K = 5
 NUM_LAYERS = 3
 TEST_SIZE = 0.2
-SEED = 42
+SEED = 31
 HIDDEN_LAYERS = [64, 32, 16]
-WEIGHT_DECAY = 0.1
-DROPOUT_RATE = 0.7
+WEIGHT_DECAY = 0.00001
+DROPOUT_RATE = 0.1
 
 # Device configuration
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
