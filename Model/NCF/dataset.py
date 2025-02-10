@@ -3,6 +3,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 import torch
+from config import *
 
 
 class NCFDataset(Dataset):
@@ -34,13 +35,13 @@ def load_and_preprocess_data(ratings_path, attraction_path):
     return ratings_df, attraction_df, user_encoder, place_encoder
 
 
-def create_train_test_split(ratings_df, test_size):
+def create_train_test_split(ratings_df, test_size, seed=SEED):
     print(
         f"Splitting data into train size of {(1- test_size)*100} and test size of {test_size * 100}"
     )
     user_ids = ratings_df["user_id"].unique()
     train_users, test_users = train_test_split(
-        user_ids, test_size=test_size, random_state=30
+        user_ids, test_size=test_size, random_state=seed
     )
     return (
         ratings_df[ratings_df["user_id"].isin(train_users)].copy(),

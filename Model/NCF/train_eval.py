@@ -32,7 +32,7 @@ def train_model(
         "maes": [],
     }
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
     for epoch in range(num_epochs):
         model.train()
@@ -50,7 +50,7 @@ def train_model(
 
             loss = criterion(predictions.squeeze(), ratings)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             running_loss += loss.item()
 
@@ -99,30 +99,12 @@ def train_model(
         print(f"Recall@10: {recall:.4f}")
         print(f"RMSE: {metrics['rmses'][-1]:.4f}, MAE: {metrics['maes'][-1]:.4f}")
 
-        scheduler.step()
-
-     # Save last epoch's metrics to the config
-    last_epoch_metrics = {
-        "epoch": num_epochs,
-        "train_loss": avg_train_loss,
-        "test_loss": avg_test_loss,
-        "hit_rate": hit_rate,
-        "ndcg": ndcg,
-        "precision": precision,
-        "recall": recall,
-        "rmse": metrics["rmses"][-1],
-        "mae": metrics["maes"][-1],
-    }
-
-    # Save these results to config file
-    save_config(last_epoch_metrics)
+        # scheduler.step()
 
     print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
-    torch.save(model.state_dict(), MODEL_SAVE_PATH) 
+    torch.save(model.state_dict(), MODEL_SAVE_PATH)
 
     return train_losses, test_losses, metrics
-
-
 
 
 def evaluate_topn(model, test_loader, num_items, top_k, device):
@@ -131,49 +113,60 @@ def evaluate_topn(model, test_loader, num_items, top_k, device):
     hits, ndcgs, precisions, recalls = [], [], [], []
 
     with torch.no_grad():
+        all_user_ids, all_item_ids, all_ratings = [], [], []
+        
+        # Collect all user, item, and rating pairs for evaluation
         for batch in tqdm(test_loader, desc="Evaluating"):
             user_ids, item_ids, ratings = (t.to(device) for t in batch)
+            all_user_ids.append(user_ids)
+            all_item_ids.append(item_ids)
+            all_ratings.append(ratings)
 
-            # Get positive items (ensure list format)
-            positive_mask = ratings >= ratings.mean()
-            positive_items = item_ids[positive_mask].cpu().numpy().flatten().tolist()
+        # Concatenate all batches for predictions
+        all_user_ids = torch.cat(all_user_ids)
+        all_item_ids = torch.cat(all_item_ids)
+        all_ratings = torch.cat(all_ratings)
+
+        # Generate all predictions at once for the whole batch
+        predictions = model(all_user_ids, all_item_ids).squeeze()
+
+        # Evaluate each user in the batch
+        for idx in range(len(all_user_ids)):
+            user_id = all_user_ids[idx].item()
+            item_id = all_item_ids[idx].item()
+            pred = predictions[idx].item()
+            rating = all_ratings[idx].item()  # Get actual rating for the item
+
+            # Assuming relevant items are those with a rating >= 4 (adjust based on your dataset)
+            positive_mask = all_ratings >= 4  # Mask for relevant items (you can adjust this threshold)
+            positive_items = all_item_ids[positive_mask].cpu().numpy().flatten().tolist()
 
             if not positive_items:
-                continue
+                continue  # Skip if no relevant items are found
 
-            # Generate predictions for all items
-            all_items = torch.arange(num_items, device=device)
-            predictions = []
-            for uid in user_ids:
-                user_vector = uid.repeat(num_items)
-                preds = model(user_vector, all_items).squeeze()
-                predictions.append(preds.cpu().numpy())
+            # Get top-K recommended items based on predictions
+            top_items = np.argsort(predictions.cpu().numpy())[-top_k:][::-1]
 
-            # Calculate metrics for each user in batch
-            for uid, preds in zip(user_ids.cpu().numpy(), predictions):
-                top_items = np.argsort(preds)[-top_k:][::-1]
-                actual_items = positive_items
+            # Calculate Hit Rate: Whether a relevant item is in the top-K recommended items
+            hit_rate = 1 if item_id in top_items else 0
+            hits.append(hit_rate)
 
-                # Handle single item case
-                if isinstance(actual_items, (int, np.integer)):
-                    actual_items = [int(actual_items)]
+            # Calculate NDCG: Normalize Discounted Cumulative Gain
+            ndcg = calculate_ndcg(top_items, positive_items, ratings.cpu().numpy(), k = top_k)
+            ndcgs.append(ndcg)
 
-                hits.append(calculate_hit_rate(top_items, actual_items))
-                ndcgs.append(
-                    calculate_ndcg(top_items, actual_items, positive_items, top_k)
-                )
-                prec, rec = calculate_precision_recall(top_items, actual_items, top_k)
-                precisions.append(prec)
-                recalls.append(rec)
+            # Calculate Precision: Proportion of relevant items in top-K
+            precision = len(set(top_items) & set(positive_items)) / top_k
+            precisions.append(precision)
 
-    # Return zeros if no hits were recorded
-    if not hits:
-        return 0.0, 0.0, 0.0, 0.0
+            # Calculate Recall: Proportion of relevant items found in top-K
+            recall = len(set(top_items) & set(positive_items)) / len(positive_items) if positive_items else 0
+            recalls.append(recall)
 
-    # Calculate final metrics
-    hit_rate = np.mean(hits)
-    mean_ndcg = np.mean(ndcgs)
-    mean_precision = np.mean(precisions)
-    mean_recall = np.mean(recalls)
+    # Return average of all metrics
+    hit_rate = np.mean(hits) if hits else 0
+    mean_ndcg = np.mean(ndcgs) if ndcgs else 0
+    mean_precision = np.mean(precisions) if precisions else 0
+    mean_recall = np.mean(recalls) if recalls else 0
 
     return hit_rate, mean_ndcg, mean_precision, mean_recall

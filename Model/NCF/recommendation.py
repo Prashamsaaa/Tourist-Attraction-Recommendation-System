@@ -15,13 +15,14 @@ def generate_recommendations(
     Generates top-K recommendations for a user with confidence scores.
     """
     # Rename 'ID' to 'id' if needed
-    if 'ID' in attraction_df.columns and 'id' not in attraction_df.columns:
-        attraction_df.rename(columns={'ID': 'id'}, inplace=True)
+    if "ID" in attraction_df.columns and "id" not in attraction_df.columns:
+        attraction_df.rename(columns={"ID": "id"}, inplace=True)
 
     print("Debug >> Attraction DataFrame columns:", attraction_df.columns)
 
     model.eval()
     with torch.no_grad():
+        # Precompute all item IDs and user vector for performance
         user_vector = (
             torch.tensor([user_id], dtype=torch.long).repeat(num_items).to(device)
         )
@@ -29,10 +30,10 @@ def generate_recommendations(
 
         # Get predictions and confidence scores
         predictions = model(user_vector, all_item_ids).squeeze()
-        scores, indices = torch.topk(predictions, k=min(top_k * 2, num_items))
 
-        # Filter by minimum confidence score
-        mask = scores >= min_score
+        # Get top-k recommendations, filtering by min_score
+        scores, indices = torch.topk(predictions, k=min(top_k * 2, num_items))
+        mask = scores >= min_score  # Apply minimum score filter
         filtered_indices = indices[mask][:top_k]
         filtered_scores = scores[mask][:top_k]
 
@@ -41,16 +42,19 @@ def generate_recommendations(
 
         # Process recommendations
         recommendations = []
+
+        # Create a mapping for item details retrieval (optimize for faster access)
+        attraction_dict = attraction_df.set_index("id").to_dict(orient="index")
+
         for item_id, score in zip(recommended_items, confidence_scores):
             try:
                 original_item_id = place_encoder.inverse_transform([item_id])[0]
-                attraction = attraction_df.loc[attraction_df["id"] == original_item_id]
-
-                if not attraction.empty:
-                    if 'Name' in attraction.columns:
-                        item_name = attraction['Name'].iloc[0]
-                    else:
-                        item_name = attraction['name'].iloc[0]
+                # Use the preprocessed attraction_dict for fast lookup
+                attraction = attraction_dict.get(original_item_id)
+                if attraction:
+                    item_name = attraction.get(
+                        "Name", attraction.get("name", "Unknown")
+                    )
                     item_details = {
                         "id": original_item_id,
                         "Name": item_name,
@@ -58,9 +62,9 @@ def generate_recommendations(
                     }
 
                     # Add additional details if available
-                    for col in ["category", "rating", "location"]:
-                        if col in attraction.columns:
-                            item_details[col] = attraction[col].iloc[0]
+                    for col in ["Tags", "rating", "Province"]:
+                        if col in attraction:
+                            item_details[col] = attraction[col]
 
                     recommendations.append(item_details)
 
