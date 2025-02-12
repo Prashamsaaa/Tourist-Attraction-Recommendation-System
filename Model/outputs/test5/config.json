@@ -1,10 +1,10 @@
 {
-    "NUM_EPOCHS": 20,
-    "BATCH_SIZE": 128,
+    "NUM_EPOCHS": 100,
+    "BATCH_SIZE": 1024,
     "LEARNING_RATE": 0.001,
     "LATENT_DIM": 32,
     "TOP_K": 5,
-    "NUM_LAYERS": 3,
+    "NUM_LAYERS": 4,
     "TEST_SIZE": 0.2,
     "SEED": 43,
     "HIDDEN_LAYERS": [
@@ -13,7 +13,7 @@
         8
     ],
     "WEIGHT_DECAY": 0.1,
-    "DROPOUT_RATE": 0.6,
+    "DROPOUT_RATE": 0.7,
     "DEVICE": "cuda",
-    "MODEL_SAVE_PATH": "Model/outputs/test1"
+    "MODEL_SAVE_PATH": "Model/outputs/test40"
 }

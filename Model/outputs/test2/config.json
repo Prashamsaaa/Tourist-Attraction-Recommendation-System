@@ -1,5 +1,5 @@
 {
-    "NUM_EPOCHS": 20,
+    "NUM_EPOCHS": 50,
     "BATCH_SIZE": 128,
     "LEARNING_RATE": 0.001,
     "LATENT_DIM": 32,
@@ -15,5 +15,5 @@
     "WEIGHT_DECAY": 0.1,
     "DROPOUT_RATE": 0.6,
     "DEVICE": "cuda",
-    "MODEL_SAVE_PATH": "Model/outputs/test1"
+    "MODEL_SAVE_PATH": "Model/outputs/test9"
 }
