@@ -1,31 +1,19 @@
 {
-    "NUM_EPOCHS": 10,
-    "BATCH_SIZE": 256,
-    "LEARNING_RATE": 0.001,
-    "LATENT_DIM": 64,
+    "NUM_EPOCHS": 20,
+    "BATCH_SIZE": 8,
+    "LEARNING_RATE": 0.01,
+    "LATENT_DIM": 32,
     "TOP_K": 5,
     "NUM_LAYERS": 3,
     "TEST_SIZE": 0.2,
-    "SEED": 30,
+    "SEED": 33,
     "HIDDEN_LAYERS": [
-        64,
         32,
-        16
+        16,
+        8
     ],
     "WEIGHT_DECAY": 0.1,
     "DROPOUT_RATE": 0.2,
     "DEVICE": "cuda",
-    "MODEL_SAVE_PATH": "Model/outputs/test1",
-
-    "last_epoch_metrics": {
-        "epoch": 10,
-        "train_loss": 0.6701305508613586,
-        "test_loss": 1.4318021833896637,
-        "hit_rate": 0.20249221183800623,
-        "ndcg": 0.20249221183800623,
-        "precision": 0.12149532710280371,
-        "recall": 0.005104845676588392,
-        "rmse": 1.1936959028244019,
-        "mae": 1.0023949146270752
-    }
+    "MODEL_SAVE_PATH": "Model/outputs/test1"
 }

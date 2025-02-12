@@ -6,7 +6,7 @@
     "TOP_K": 5,
     "NUM_LAYERS": 3,
     "TEST_SIZE": 0.2,
-    "SEED": 33,
+    "SEED": 32,
     "HIDDEN_LAYERS": [
         32,
         16,
@@ -15,5 +15,5 @@
     "WEIGHT_DECAY": 0.1,
     "DROPOUT_RATE": 0.1,
     "DEVICE": "cuda",
-    "MODEL_SAVE_PATH": "Model/outputs/test8"
+    "MODEL_SAVE_PATH": "Model/outputs/test19"
 }
