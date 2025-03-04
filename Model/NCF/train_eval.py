@@ -10,6 +10,8 @@ from metrics import (
 )
 from config import *
 
+
+
 def train_model(
     model,
     train_loader,
@@ -30,6 +32,8 @@ def train_model(
         "recalls": [],
         "maes": [],
     }
+
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
     for epoch in range(num_epochs):
         model.train()
@@ -55,75 +59,56 @@ def train_model(
         model.eval()
         test_loss = 0.0
         all_preds, all_targets = [], []
-        user_item_scores = {}
 
         with torch.no_grad():
-            for user_ids, item_ids, ratings in tqdm(
-                test_loader, desc="Evaluating"
-            ):
+            for user_ids, item_ids, ratings in test_loader:
                 user_ids, item_ids, ratings = [
                     t.to(device) for t in [user_ids, item_ids, ratings]
                 ]
-                predictions = model(user_ids, item_ids).squeeze()
-                loss = criterion(predictions, ratings)
+                predictions = model(user_ids, item_ids)
+                loss = criterion(predictions.squeeze(), ratings)
                 test_loss += loss.item()
 
                 all_preds.append(predictions)
                 all_targets.append(ratings)
 
-                # Store user-item scores for ranking metrics
-                for i, user_id in enumerate(user_ids):
-                    user_id = user_id.item()
-                    if user_id not in user_item_scores:
-                        user_item_scores[user_id] = []
-                    user_item_scores[user_id].append((item_ids[i].item(), predictions[i].item(), ratings[i].item()))
-
-        # Convert to tensors
+        # Calculate metrics
         all_preds = torch.cat(all_preds)
         all_targets = torch.cat(all_targets)
-
-        # Compute ranking-based metrics in one pass
-        hit_rates, ndcgs, precisions, recalls = [], [], [], []
-
-        for user_id, item_data in user_item_scores.items():
-            item_data.sort(key=lambda x: x[1], reverse=True)  # Sort by predicted score
-            recommended_items = [x[0] for x in item_data[:TOP_K]]
-            actual_items = [x[0] for x in item_data if x[2] >= 2.5]
-
-            if actual_items:
-                hit_rate = calculate_hit_rate(recommended_items, actual_items)
-                precision, recall = calculate_precision_recall(recommended_items, actual_items, TOP_K)
-                ndcg = calculate_ndcg(recommended_items, actual_items, TOP_K)
-
-                hit_rates.append(hit_rate)
-                precisions.append(precision)
-                recalls.append(recall)
-                ndcgs.append(ndcg)
 
         avg_train_loss = running_loss / len(train_loader)
         avg_test_loss = test_loss / len(test_loader)
 
         train_losses.append(avg_train_loss)
         test_losses.append(avg_test_loss)
-        metrics["hit_rates"].append(np.mean(hit_rates))
-        metrics["ndcgs"].append(np.mean(ndcgs))
-        metrics["precisions"].append(np.mean(precisions))
-        metrics["recalls"].append(np.mean(recalls))
+        hit_rate, ndcg, precision, recall = evaluate_topn(
+            model, test_loader, num_items, top_k=TOP_K, device=DEVICE
+        )
+
+        metrics["hit_rates"].append(hit_rate)
+        metrics["ndcgs"].append(ndcg)
+        metrics["precisions"].append(precision)
+        metrics["recalls"].append(recall)
         metrics["rmses"].append(calculate_rmse(all_preds, all_targets))
         metrics["maes"].append(calculate_mae(all_preds, all_targets))
 
         print(f"Epoch {epoch+1}/{num_epochs}")
         print(f"Train Loss: {avg_train_loss:.4f}, Test Loss: {avg_test_loss:.4f}")
-        print(f"Hit Rate@{TOP_K}: {metrics['hit_rates'][-1]:.4f}")
-        print(f"NDCG@{TOP_K}: {metrics['ndcgs'][-1]:.4f}")
-        print(f"Precision@{TOP_K}: {metrics['precisions'][-1]:.4f}")
-        print(f"Recall@{TOP_K}: {metrics['recalls'][-1]:.4f}")
+        print(f"Hit Rate@10: {hit_rate:.4f}")
+        print(f"NDCG@10: {ndcg:.4f}")
+        print(f"Precision@10: {precision:.4f}")
+        print(f"Recall@10: {recall:.4f}")
         print(f"RMSE: {metrics['rmses'][-1]:.4f}, MAE: {metrics['maes'][-1]:.4f}")
 
+        scheduler.step()
+
+
     print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
-    torch.save(model.state_dict(), MODEL_SAVE_PATH)
+    torch.save(model.state_dict(), MODEL_SAVE_PATH) 
 
     return train_losses, test_losses, metrics
+
+
 
 
 def evaluate_topn(model, test_loader, num_items, top_k, device):
@@ -135,42 +120,41 @@ def evaluate_topn(model, test_loader, num_items, top_k, device):
         for batch in tqdm(test_loader, desc="Evaluating"):
             user_ids, item_ids, ratings = (t.to(device) for t in batch)
 
-            # Identify positive items based on the threshold (ratings >= 4 are considered relevant)
-            positive_mask = ratings >= 4.5
+
+            # Get positive items (ensure list format)
+            positive_mask = ratings >= ratings.mean()
             positive_items = item_ids[positive_mask].cpu().numpy().flatten().tolist()
 
-            # Skip batch if no relevant items
-            if len(positive_items) == 0:
-                continue  # Skip if no relevant items are found
+            if not positive_items:
+                continue
 
-            # Generate predictions for all user-item pairs in the batch
-            all_items = torch.arange(num_items, device=device).unsqueeze(0).expand(len(user_ids), num_items)
-            user_ids_batch = user_ids.unsqueeze(1).expand_as(all_items)  # Replicate user_ids for all items
-            predictions = model(user_ids_batch.flatten(), all_items.flatten()).view(len(user_ids), num_items)
+            # Generate predictions for all items
+            all_items = torch.arange(num_items, device=device)
+            predictions = []
+            for uid in user_ids:
+                user_vector = uid.repeat(num_items)
+                preds = model(user_vector, all_items).squeeze()
+                predictions.append(preds.cpu().numpy())
 
-            # Process each user's predictions
-            for idx, preds in enumerate(predictions):
-                # Get top-K recommended items
-                top_items = np.argsort(preds.cpu().numpy())[-top_k:][::-1]
-
-                # Ensure positive_items is a list (relevant items for comparison)
+            # Calculate metrics for each user in batch
+            for uid, preds in zip(user_ids.cpu().numpy(), predictions):
+                top_items = np.argsort(preds)[-top_k:][::-1]
                 actual_items = positive_items
 
-                # Calculate Hit Rate
-                hit_rate = calculate_hit_rate(top_items, actual_items)
-                hits.append(hit_rate)
+                # Handle single item case
+                if isinstance(actual_items, (int, np.integer)):
+                    actual_items = [int(actual_items)]
 
-                # Calculate NDCG
-                ndcg = calculate_ndcg(top_items, actual_items, top_k)
-                ndcgs.append(ndcg)
+                hits.append(calculate_hit_rate(top_items, actual_items))
+                ndcgs.append(
+                    calculate_ndcg(top_items, actual_items, positive_items, top_k)
+                )
+                prec, rec = calculate_precision_recall(top_items, actual_items, top_k)
+                precisions.append(prec)
+                recalls.append(rec)
 
-                # Calculate Precision and Recall
-                precision, recall = calculate_precision_recall(top_items, actual_items, top_k)
-                precisions.append(precision)
-                recalls.append(recall)
-
-    # If no hits were recorded, return zero for all metrics
-    if len(hits) == 0:
+    # Return zeros if no hits were recorded
+    if not hits:
         return 0.0, 0.0, 0.0, 0.0
 
     # Calculate final metrics

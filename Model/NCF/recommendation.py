@@ -36,10 +36,10 @@ def generate_recommendations(
         
         # Aggregate the ratings for each attraction
         merged_df = merged_df.groupby('id').agg({
-            'Name': 'first',  # Keep the first name
-            'Description': 'first',  # Keep the first description
-            'Province': 'first',  # Keep the first province
-            'Tags': 'first',  # Keep the first tags
+            'name': 'first',  # Keep the first name
+            'description': 'first',  # Keep the first description
+            'province': 'first',  # Keep the first province
+            'tags': 'first',  # Keep the first tags
             'rating': 'mean'  # Average ratings
         }).reset_index()
 
@@ -51,13 +51,13 @@ def generate_recommendations(
                 original_item_id = place_encoder.inverse_transform([item_id])[0]
                 attraction = attraction_dict.get(original_item_id)
                 if attraction:
-                    item_name = attraction.get("Name", "Unknown")
+                    item_name = attraction.get("name", "Unknown")
                     item_details = {
                         "id": original_item_id,
-                        "Name": item_name,
+                        "name": item_name,
                         "confidence": round(float(score), 3),
                     }
-                    for col in ["Tags", "rating", "Province"]:
+                    for col in ["Tags", "Rating", "Province"]:
                         if col in attraction:
                             item_details[col] = attraction[col]
                     recommendations.append(item_details)

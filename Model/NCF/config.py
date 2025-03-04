@@ -13,7 +13,7 @@ TEST_SIZE = 0.2
 SEED = 43
 HIDDEN_LAYERS = [32, 16, 8]
 WEIGHT_DECAY = 0.1
-DROPOUT_RATE = 0.1
+DROPOUT_RATE = 0.4
 
 # Device configuration
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

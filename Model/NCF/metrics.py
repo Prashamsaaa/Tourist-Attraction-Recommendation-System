@@ -1,62 +1,63 @@
 import numpy as np
 import torch
-import logging
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def calculate_hit_rate(recommended_items, actual_items, k=None):
-    """Calculate the fraction of recommended items that appear in the actual items."""
-    if not recommended_items or not actual_items:
-        logging.info(f"Empty recommended or actual items (k={k}). Returning 0.0")
-        return 0.0
+    """Calculate if any recommended item is in the actual items"""
+    if isinstance(actual_items, (int, np.integer)):
+        actual_items = [int(actual_items)]
 
-    k = min(k or len(recommended_items), len(recommended_items))
-    hits = len(set(recommended_items[:k]) & set(actual_items)) / k
-    return hits
+    hit = len(set(recommended_items[:k]) & set(actual_items)) > 0
+    return int(hit)
 
 
-def calculate_ndcg(recommended_items, actual_items, k):
-    """Calculate Normalized Discounted Cumulative Gain (NDCG)."""
-    if not recommended_items or not actual_items:
-        logging.info(f"Empty recommended or actual items (k={k}). Returning 0.0")
-        return 0.0
 
-    dcg = sum(1 / np.log2(i + 2) for i, item in enumerate(recommended_items[:k]) if item in actual_items)
-    idcg = sum(1 / np.log2(i + 2) for i in range(min(len(actual_items), k)))
+def calculate_ndcg(recommended_items, actual_items, ratings, k):
+    """Calculate Normalized Discounted Cumulative Gain with rating-based relevance"""
+    if isinstance(actual_items, (int, np.integer)):
+        actual_items = [int(actual_items)]
 
-    return dcg / idcg if idcg > 0 else 0.0
+    # Relevance score based on ratings: higher rating means more relevant
+    actual_relevance = {
+        item: rating for item, rating in zip(actual_items, ratings)
+    }  # map item to its rating
+
+    dcg = 0.0
+    for i, item in enumerate(recommended_items[:k]):
+        # Relevance based on rating for the item
+        relevance = actual_relevance.get(
+            item, 0
+        )  # default relevance 0 if item not in actual items
+        dcg += relevance / np.log2(i + 2)
+
+    # Ideal DCG (IDCG) assumes the recommended items are sorted by relevance
+    ideal_relevance = sorted(
+        ratings, reverse=True
+    )  # Ideal relevance is highest ratings first
+    idcg = 0.0
+    for i, item in enumerate(recommended_items[:k]):
+        relevance = actual_relevance.get(item, 0)
+        idcg += relevance / np.log2(i + 2)
+
+    return dcg / idcg if idcg > 0 else 0
 
 
 def calculate_precision_recall(recommended_items, actual_items, k):
-    """Calculate Precision and Recall for the top-K recommended items."""
-    if not recommended_items or not actual_items:
-        logging.info(f"Empty recommended or actual items (k={k}). Returning (0.0, 0.0)")
-        return 0.0, 0.0
+    """Calculate Precision@K and Recall@K"""
+    if isinstance(actual_items, (int, np.integer)):
+        actual_items = [int(actual_items)]
 
-    k = min(k, len(recommended_items))
     relevant = set(recommended_items[:k]) & set(actual_items)
-
-    precision = len(relevant) / k if k > 0 else 0.0
-    recall = len(relevant) / len(actual_items) if actual_items else 0.0
-
+    precision = len(relevant) / k if k > 0 else 0
+    recall = len(relevant) / len(actual_items) if actual_items else 0
     return precision, recall
 
 
 def calculate_rmse(predictions, targets):
-    """Calculate Root Mean Squared Error (RMSE)."""
-    if predictions.numel() == 0 or targets.numel() == 0:
-        logging.warning("Empty predictions or targets in RMSE calculation. Returning 0.0")
-        return 0.0
-
-    mse = torch.mean((predictions - targets).cpu() ** 2).item()
-    return np.sqrt(mse)
+    """Calculate Root Mean Squared Error"""
+    return torch.sqrt(torch.mean((predictions - targets) ** 2)).item()
 
 
 def calculate_mae(predictions, targets):
-    """Calculate Mean Absolute Error (MAE)."""
-    if predictions.numel() == 0 or targets.numel() == 0:
-        logging.warning("Empty predictions or targets in MAE calculation. Returning 0.0")
-        return 0.0
-
-    return torch.mean(torch.abs(predictions.cpu() - targets.cpu())).item()
+    """Calculate Mean Absolute Error"""
+    return torch.mean(torch.abs(predictions - targets)).item()
