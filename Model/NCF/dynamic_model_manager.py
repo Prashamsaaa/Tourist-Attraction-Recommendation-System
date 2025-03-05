@@ -4,6 +4,8 @@ import numpy as np
 import logging
 from collections import deque
 from datetime import datetime
+from NCF.models import GMF
+
 
 
 class DynamicModelManager:
@@ -134,6 +136,7 @@ class DynamicModelManager:
         except Exception as e:
             self.logger.error(f"Failed to load model state: {str(e)}")
             return False
+    
 
     # def load_model_state(self, path='model_backup.pt'):
     #     """Load model state from file"""
@@ -166,60 +169,35 @@ class DynamicModelManager:
             if updated_df is None:
                 return False
 
-            # Step 1: Add new data to the temporary buffer
-            new_user_id = torch.tensor(
-                updated_df["user_id"].values, dtype=torch.long
-            ).to(device)
-            new_item_id = torch.tensor(updated_df["id"].values, dtype=torch.long).to(
-                device
-            )
-            new_rating = torch.tensor(
-                updated_df["rating"].values, dtype=torch.float32
-            ).to(device)
+            if self.update_count % self.backup_frequency == 0:
+                self.save_model_state(f"model_backup_v{self.current_version}.pt")
+                
+            num_users = len(self.user_encoder.classes_)
+            num_items = len(self.place_encoder.classes_)
+            self.model.resize_embedding(num_users, num_items, device)
 
-            # Add the new data to the recent updates buffer
-            self.recent_updates.append((new_user_id, new_item_id, new_rating))
+            new_user_id = torch.tensor(updated_df["user_id"].values, dtype=torch.long).to(device).unsqueeze(0)
+            new_item_id = torch.tensor(updated_df["id"].values, dtype=torch.long).to(device).unsqueeze(0)
+            new_rating = torch.tensor(updated_df["rating"].values, dtype=torch.float32).to(device).unsqueeze(0)
 
-            # Step 2: Process in mini-batches if buffer is full
-            if len(self.recent_updates) >= self.batch_size:
-                # Prepare the mini-batch
-                batch = list(self.recent_updates)
-                self.recent_updates.clear()  # Reset the buffer
+            # Update training dataset
+            train_dataset.user_ids = torch.cat((train_dataset.user_ids.to(device), new_user_id))
+            train_dataset.item_ids = torch.cat((train_dataset.item_ids.to(device), new_item_id))
+            train_dataset.ratings = torch.cat((train_dataset.ratings.to(device), new_rating))
 
-                batch_users, batch_items, batch_ratings = zip(*batch)
-
-                # Stack tensors to create a mini-batch
-                batch_users = torch.stack(batch_users).to(device)
-                batch_items = torch.stack(batch_items).to(device)
-                batch_ratings = torch.stack(batch_ratings).to(device)
-
-                # Step 3: Perform a training step on the mini-batch
-                self.optimizer.zero_grad()
-                predictions = self.model(batch_users, batch_items)
-                loss = self.criterion(predictions.squeeze(), batch_ratings)
-                loss.backward()
-                self.optimizer.step()
+            # Training step
+            self.optimizer.zero_grad()
+            predictions = self.model(new_user_id, new_item_id)
+            loss = self.criterion(predictions.squeeze(), new_rating)
+            loss.backward()
+            self.optimizer.step()
 
                 # Step 4: Track the losses and updates
                 self.recent_losses.append(loss.item())
                 self.update_count += 1
                 self.current_version += 1
 
-                self.logger.info(
-                    f"Model updated - Version: {self.current_version}, Loss: {loss.item():.4f}"
-                )
-
-                # Step 5: Check if retraining is necessary
-                if self.update_count % retrain_threshold == 0:
-                    self.retrain_model(train_dataset, device)
-                    self.logger.info(
-                        f"Model retrained after {self.update_count} updates."
-                    )
-
-            else:
-                # Log the update without training if buffer is not full
-                self.logger.info(f"Added to buffer: {len(self.recent_updates)} samples")
-
+            self.logger.info(f"Model updated - Version: {self.current_version}, Loss: {loss.item():.4f}")
             return True
 
         except Exception as e:
@@ -279,3 +257,9 @@ class DynamicModelManager:
             "item_count": len(self.place_encoder.classes_),
             "last_backup": self.last_backup,
         }
+
+class DummyTrainDataset:
+    def __init__(self, device):
+        self.user_ids = torch.empty(0, dtype=torch.long, device=device)
+        self.item_ids = torch.empty(0, dtype=torch.long, device=device)
+        self.ratings = torch.empty(0, dtype=torch.float32, device=device)

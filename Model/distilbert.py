@@ -113,6 +113,21 @@ def rmse(recommended_place_ids, relevant_place_ids, ratings_df):
     squared_errors = (np.array(predicted_ratings) - np.array(relevant_ratings)) ** 2
     return np.sqrt(np.mean(squared_errors))
 
+def mae(recommended_place_ids, relevant_place_ids, ratings_df):
+    # Get actual ratings for relevant places
+    relevant_ratings = ratings_df.loc[ratings_df['id'].isin(relevant_place_ids), 'rating'].values
+    
+    # Create placeholder predictions (same as RMSE example)
+    predicted_ratings = [5] * len(relevant_place_ids)  # Placeholder predicted rating
+    
+    # Handle edge cases
+    if len(predicted_ratings) != len(relevant_ratings) or len(relevant_ratings) == 0:
+        return 0.0
+    
+    # Calculate absolute errors and mean
+    absolute_errors = np.abs(np.array(predicted_ratings) - np.array(relevant_ratings))
+    return np.mean(absolute_errors)
+
 # Evaluate a Single User
 def evaluate_user(user_id, data, ratings, embeddings, k=5):
     test_user_ratings = ratings[ratings['user_id'] == user_id]
@@ -130,18 +145,20 @@ def evaluate_user(user_id, data, ratings, embeddings, k=5):
     ndcg_score = ndcg_at_k(recommendations, relevant_places, k)
     
     rmse_score = rmse(recommendations[:k], relevant_places[:k], test_user_ratings)
+    mae_score = mae(recommendations[:k], relevant_places[:k], test_user_ratings)
     
     return {'proportional_hit_rate': proportional_hit_rate,
             'precision': precision_score,
             'recall': recall_score,
             'ndcg': ndcg_score,
-            'rmse': rmse_score}
+            'rmse': rmse_score,
+            'mae': mae_score}
 
 # Evaluate All Users
 def evaluate_system(data, ratings, embeddings):
     users = ratings['user_id'].unique()
     
-    metrics = {'proportional_hit_rate': [], 'precision': [], 'recall': [], 'ndcg': [], 'rmse': []}
+    metrics = {'proportional_hit_rate': [], 'precision': [], 'recall': [], 'ndcg': [], 'rmse': [], 'mae':[]}
     
     for user_id in users:
         user_metrics = evaluate_user(user_id, data.copy(), ratings.copy(), embeddings)
@@ -152,18 +169,21 @@ def evaluate_system(data, ratings, embeddings):
             metrics['recall'].append(user_metrics['recall'])
             metrics['ndcg'].append(user_metrics['ndcg'])
             metrics['rmse'].append(user_metrics['rmse'])
+            metrics['mae'].append(user_metrics['mae'])
     
     avg_proportional_hit_rate = np.mean(metrics['proportional_hit_rate']) if metrics['proportional_hit_rate'] else 0.0
     avg_precision = np.mean(metrics['precision']) if metrics['precision'] else 0.0
     avg_recall = np.mean(metrics['recall']) if metrics['recall'] else 0.0
     avg_ndcg = np.mean(metrics['ndcg']) if metrics['ndcg'] else 0.0
     avg_rmse = np.mean(metrics['rmse']) if metrics['rmse'] else 0.0
+    avg_mae = np.mean(metrics['mae']) if metrics['mae'] else 0.0
     
     return {'avg_proportional_hit_rate': avg_proportional_hit_rate,
             'avg_precision': avg_precision,
             'avg_recall': avg_recall,
             'avg_ndcg': avg_ndcg,
-            'avg_rmse': avg_rmse}
+            'avg_rmse': avg_rmse,
+            'avg_mae': avg_mae}
 
 # Step 6: t-SNE Visualization of Embeddings
 def visualize_embeddings_tsne(embeddings):
@@ -187,15 +207,15 @@ def visualize_embeddings_tsne(embeddings):
     # Create a scatter plot for the reduced embeddings
     plt.figure(figsize=(12, 8))
     plt.scatter(reduced_embeddings[:, 0], reduced_embeddings[:, 1], alpha=0.7, edgecolors='k')
-    plt.title("t-SNE Visualization of Place Embeddings")
+    plt.title("t-SNE Visualization of Place Embeddings using DISTIL-BERT")
     plt.xlabel("t-SNE Dimension 1")
     plt.ylabel("t-SNE Dimension 2")
     plt.show()  # Removed erroneous '(2D space)'
 
 def main():
     # File paths for descriptions and ratings
-    description_file = '../Notebook/Output/PreparedData.csv'
-    rating_file = '../Data/FinalDataset/all_ratings.csv'
+    description_file = './Model/Data/PreparedData.csv'
+    rating_file = './Model/Data/all_ratings.csv'
     
     print("Loading data...")
     descriptions, ratings = load_data(description_file, rating_file)
@@ -215,6 +235,7 @@ def main():
     print(f"Average Recall: {results['avg_recall']}")
     print(f"Average NDCG: {results['avg_ndcg']}")
     print(f"Average RMSE: {results['avg_rmse']}")
+    print(f"Average MAE: {results['avg_mae']}")
     
     print("\nVisualizing embeddings with t-SNE...")
     visualize_embeddings_tsne(embeddings)
