@@ -1,14 +1,17 @@
 import torch
 import numpy as np
 from tqdm import tqdm
-from metrics import (
+from .metrics import (
     calculate_hit_rate,
     calculate_ndcg,
     calculate_precision_recall,
     calculate_rmse,
     calculate_mae,
 )
-from config import *
+import datetime
+from .config import *
+from .models import NCF  # Import the NCF model
+
 
 
 
@@ -35,6 +38,22 @@ def train_model(
 
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
+    model.to(device)
+
+    # Initialize model version and architecture info
+    num_users = len(train_loader.dataset.user_ids)  # Define num_users based on your dataset
+
+    model_info = {
+        'version': '1.0.0',
+        'architecture': {
+            'num_users': num_users,
+            'num_items': num_items,
+            'latent_dim': LATENT_DIM,
+            'hidden_layers': HIDDEN_LAYERS
+        },
+        'timestamp': str(datetime.now())
+    }
+
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -49,7 +68,11 @@ def train_model(
             optimizer.zero_grad()
             predictions = model(user_ids, item_ids)
 
-            loss = criterion(predictions.squeeze(), ratings)
+            # Ensure predictions and ratings have the same shape
+            if predictions.shape != ratings.shape:
+                predictions = predictions.view_as(ratings)
+
+            loss = criterion(predictions, ratings)
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
@@ -104,9 +127,32 @@ def train_model(
 
 
     print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
-    torch.save(model.state_dict(), MODEL_SAVE_PATH) 
+    # Save model with architecture metadata
+    checkpoint = {
+        'state_dict': model.state_dict(),
+        'model_info': model_info,
+        'version': model_info['version'],
+        'architecture': model_info['architecture'],
+        'timestamp': model_info['timestamp']
+    }
+    torch.save(checkpoint, MODEL_SAVE_PATH)
 
     return train_losses, test_losses, metrics
+
+
+def load_ncf_model(model_path, num_users, num_items):
+    """Loads the NCF model with the specified architecture and weights."""
+    model = NCF(num_users, num_items, LATENT_DIM, HIDDEN_LAYERS).to(DEVICE)
+    try:
+        checkpoint = torch.load(model_path, map_location=DEVICE)
+        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['state_dict'], strict=False)
+        else:
+            model.load_state_dict(checkpoint, strict=False)
+        print("Loaded NCF model from:", model_path)
+    except Exception as e:
+        print(f"Error loading model: {e}. Proceeding with available weights. {e}")
+    return model
 
 
 

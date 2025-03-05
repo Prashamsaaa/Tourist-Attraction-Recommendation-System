@@ -3,7 +3,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 import torch
-from config import *
+from .config import *
 
 class NCFDataset(Dataset):
     def __init__(self, user_ids, item_ids, ratings):
@@ -86,18 +86,18 @@ def create_dataset_and_loaders(train_df, test_df, batch_size):
     print("Creating Dataset and Loading the Data...")
 
     train_dataset = NCFDataset(
-        torch.tensor(train_df["user_id"].values, dtype=torch.long),
-        torch.tensor(train_df["id"].values, dtype=torch.long),
-        torch.tensor(train_df["rating"].values, dtype=torch.float32),
+        torch.tensor(train_df["user_id"].values, dtype=torch.long, device=DEVICE),
+        torch.tensor(train_df["id"].values, dtype=torch.long, device=DEVICE),
+        torch.tensor(train_df["rating"].values, dtype=torch.float32, device=DEVICE)
     )
 
     test_dataset = NCFDataset(
-        torch.tensor(test_df["user_id"].values, dtype=torch.long),
-        torch.tensor(test_df["id"].values, dtype=torch.long),
-        torch.tensor(test_df["rating"].values, dtype=torch.float32),
+        torch.tensor(test_df["user_id"].values, dtype=torch.long, device=DEVICE),
+        torch.tensor(test_df["id"].values, dtype=torch.long, device=DEVICE),
+        torch.tensor(test_df["rating"].values, dtype=torch.float32, device=DEVICE)
     )
 
     return (
         DataLoader(train_dataset, batch_size=batch_size, shuffle=True),
-        DataLoader(test_dataset, batch_size=batch_size, shuffle=False),
+        DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     )

@@ -1,5 +1,5 @@
 import torch
-from config import *
+from .config import *
 import torch.nn as nn
 
 
@@ -9,30 +9,17 @@ class GMF(nn.Module):
         self.user_embedding = nn.Embedding(num_users, latent_dim)
         self.item_embedding = nn.Embedding(num_items, latent_dim)
 
-        # # Optional: Add bias terms
-        # self.user_bias = nn.Embedding(num_users, 1)
-        # self.item_bias = nn.Embedding(num_items, 1)
-        
     def forward(self, user_ids, item_ids):
         user_emb = self.user_embedding(user_ids)
         item_emb = self.item_embedding(item_ids)
-         
-        # user_b = self.user_bias(user_ids).squeeze()
-        # item_b = self.item_bias(item_ids).squeeze()
-        # # Element-wise multiplication and adding biases
-        # interaction = user_emb * item_emb + user_b + item_b
-        # return interaction
-
-        # Element-wise multiplication
-        interaction = user_emb * item_emb
-        return interaction
+        return user_emb * item_emb
 
 
 class MLP(nn.Module):
     def __init__(self, num_users, num_items, latent_dim, hidden_layers):
         super(MLP, self).__init__()
-        self.user_embedding = nn.Embedding(num_users, latent_dim)
-        self.item_embedding = nn.Embedding(num_items, latent_dim)
+        self.user_embedding = nn.Embedding(num_users, latent_dim, padding_idx=0)
+        self.item_embedding = nn.Embedding(num_items, latent_dim, padding_idx=0)
 
         input_dim = latent_dim * 2
         layers = []
@@ -49,10 +36,7 @@ class MLP(nn.Module):
         user_emb = self.user_embedding(user_ids)
         item_emb = self.item_embedding(item_ids)
         mlp_input = torch.cat([user_emb, item_emb], dim=-1)
-        x = self.mlp_layers(mlp_input)
-        return x
-    # # Optional: Residual Connection
-    #     return x + mlp_input
+        return self.mlp_layers(mlp_input)
 
 
 class NCF(nn.Module):
@@ -83,5 +67,5 @@ class NCF(nn.Module):
         mlp_output = self.mlp(user_ids, item_ids)
         combined = torch.cat([gmf_output, mlp_output], dim=-1)
         output = self.output_layer(combined)
-        # Optional: Add a non-linearity if necessary
-        return torch.sigmoid(output.squeeze()) * 5.0  # Adjust scale to [0, 5]
+        # Scale sigmoid output to [0, 5]
+        return torch.tanh(output.squeeze()) * 2.5 + 2.5
