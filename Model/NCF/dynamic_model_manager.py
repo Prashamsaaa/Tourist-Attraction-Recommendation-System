@@ -4,9 +4,7 @@ import numpy as np
 import logging
 from collections import deque
 from datetime import datetime
-from NCF.models import GMF
-
-
+import torch.nn as nn
 
 class DynamicModelManager:
     def __init__(
@@ -40,7 +38,8 @@ class DynamicModelManager:
         self.recent_updates = deque(maxlen=max_memory_size)
 
         # Setup logging
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.INFO, 
+                            format='%(asctime)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger(__name__)
 
     def validate_rating_data(self, rating_data):
@@ -68,136 +67,162 @@ class DynamicModelManager:
             ("id", self.place_encoder),
         ]:
             original_id = new_df[col].iloc[0]
+            
+            # Dynamically expand encoder if new ID is encountered
             if original_id not in encoder.classes_:
                 self.logger.info(
                     f"New {col.replace('_', ' ').title()} found: {original_id}. Adding to encoder."
                 )
                 encoder.classes_ = np.append(encoder.classes_, original_id)
-                try:
-                    new_encoded_val = encoder.transform([original_id])[0]
-                    new_df[col] = new_encoded_val
-                except Exception as e:
-                    self.logger.error(f"Error encoding new {col}: {e}")
-                    return None
-            else:
-                new_df[col] = encoder.transform(new_df[col])
+                
+                # Resize model's embedding layer to accommodate new entities
+                if col == "user_id":
+                    self._resize_embedding_layer(self.model.user_embedding, len(encoder.classes_))
+                else:
+                    self._resize_embedding_layer(self.model.item_embedding, len(encoder.classes_))
+            
+            # Transform to encoded value
+            try:
+                new_df[col] = encoder.transform([original_id])[0]
+            except Exception as e:
+                self.logger.error(f"Error encoding {col}: {e}")
+                return None
 
         return new_df
 
-    def save_model_state(self, path="model_backup.pt"):
-        """Save current model state with metadata"""
-        try:
-            # Create a complete state dictionary with the entire model
-            state = {
-                "model": self.model,  # Save the complete model
-                "optimizer": self.optimizer,  # Save the complete optimizer
-                "criterion": self.criterion,  # Save the loss criterion
-                "user_encoder_classes": self.user_encoder.classes_.tolist(),
-                "place_encoder_classes": self.place_encoder.classes_.tolist(),
-                "version": self.current_version,
-                "update_count": self.update_count,
-                "timestamp": datetime.now().isoformat(),
-                "performance_metrics": {
-                    "recent_loss_avg": (
-                        np.mean(self.recent_losses) if self.recent_losses else None
-                    ),
-                    "recent_losses": list(self.recent_losses),
-                    "performance_history": list(self.performance_history),
-                },
-            }
+    def _resize_embedding_layer(self, embedding_layer, new_num_embeddings):
+        """Safely resize an embedding layer"""
+        old_embedding = embedding_layer
+        new_embedding = nn.Embedding(new_num_embeddings, embedding_layer.embedding_dim)
+        
+        # Copy existing weights
+        new_embedding.weight.data[:old_embedding.num_embeddings] = old_embedding.weight.data
+        
+        # Initialize new weights with Xavier uniform 
+        nn.init.xavier_uniform_(new_embedding.weight[old_embedding.num_embeddings:])
+        
+        # Replace the old embedding with the new one
+        embedding_layer = new_embedding
 
-            torch.save(state, path)
-            self.last_backup = path
-            self.logger.info(f"Complete model state saved to {path}")
-            return True
+def save_model_state(self, path="model_backup.pt"):
+    """Save current model state with metadata"""
+    try:
+        state = {
+            "model_state_dict": self.model.state_dict(),  # Save only state dict
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "user_encoder_classes": self.user_encoder.classes_.tolist(),
+            "place_encoder_classes": self.place_encoder.classes_.tolist(),
+            "version": self.current_version,
+            "update_count": self.update_count,
+            "timestamp": datetime.now().isoformat(),
+            "performance_metrics": {
+                "recent_loss_avg": (
+                    np.mean(self.recent_losses) if self.recent_losses else None
+                ),
+                "recent_losses": list(self.recent_losses),
+                "performance_history": list(self.performance_history),
+            },
+        }
 
-        except Exception as e:
-            self.logger.error(f"Failed to save model state: {str(e)}")
-            return False
+        torch.save(state, path)
+        self.last_backup = path
+        self.logger.info(f"Model state saved to {path}")
+        return True
 
-    def load_model_state(self, path="model_backup.pt"):
-        """Load complete model state from file"""
-        try:
-            state = torch.load(path, map_location=torch.device("cpu"))
+    except Exception as e:
+        self.logger.error(f"Failed to save model state: {str(e)}")
+        return False
+def load_model_state(self, path="model_backup.pt"):
+    """Load model state from file"""
+    try:
+        state = torch.load(path, map_location=torch.device("cpu"))
 
-            # Load complete components
-            self.model = state["model"]
-            self.optimizer = state["optimizer"]
-            self.criterion = state["criterion"]
+        # Load model and optimizer states
+        self.model.load_state_dict(state["model_state_dict"])
+        self.optimizer.load_state_dict(state["optimizer_state_dict"])
 
-            # Load encoder data
-            self.user_encoder.classes_ = np.array(state["user_encoder_classes"])
-            self.place_encoder.classes_ = np.array(state["place_encoder_classes"])
+        # Restore encoder classes
+        self.user_encoder.classes_ = np.array(state["user_encoder_classes"])
+        self.place_encoder.classes_ = np.array(state["place_encoder_classes"])
 
-            # Load version and counters
-            self.current_version = state["version"]
-            self.update_count = state["update_count"]
+        # Restore version and counters
+        self.current_version = state["version"]
+        self.update_count = state["update_count"]
 
-            # Load performance metrics if available
-            if "performance_metrics" in state:
-                metrics = state["performance_metrics"]
-                self.recent_losses = deque(metrics["recent_losses"], maxlen=10)
-                self.performance_history = deque(
-                    metrics["performance_history"], maxlen=100
-                )
+        # Restore performance metrics
+        if "performance_metrics" in state:
+            metrics = state["performance_metrics"]
+            self.recent_losses = deque(
+                metrics.get("recent_losses", []), 
+                maxlen=10
+            )
+            self.performance_history = deque(
+                metrics.get("performance_history", []), 
+                maxlen=100
+            )
 
-            self.logger.info(f"Complete model state loaded from {path}")
-            return True
+        self.logger.info(f"Model state loaded from {path}")
+        return True
 
-        except Exception as e:
-            self.logger.error(f"Failed to load model state: {str(e)}")
-            return False
-    
-
-    # def load_model_state(self, path='model_backup.pt'):
-    #     """Load model state from file"""
-    #     try:
-    #         state = torch.load(path)
-    #         required_keys = ['model_state', 'optimizer_state', 'version']
-    #         if not all(key in state for key in required_keys):
-    #             raise ValueError("Invalid state file")
-
-    #         self.model.load_state_dict(state['model_state'])
-    #         self.optimizer.load_state_dict(state['optimizer_state'])
-    #         self.user_encoder.classes_ = np.array(state['user_encoder_classes'])
-    #         self.place_encoder.classes_ = np.array(state['place_encoder_classes'])
-    #         self.current_version = state['version']
-    #         self.logger.info(f"Model state loaded from {path}")
-    #         return True
-    #     except Exception as e:
-    #         self.logger.error(f"Failed to load model state: {str(e)}")
-    #         return False
-
+    except Exception as e:
+        self.logger.error(f"Failed to load model state: {str(e)}")
+        return False
     def update_model(self, new_rating_data, train_dataset, device):
         """Update model with new rating data"""
         try:
+            # Validate input data
             if not self.validate_rating_data(new_rating_data):
                 return False
 
+            # Update encoders and get encoded data
             updated_df = self.update_encoders(new_rating_data)
             if updated_df is None:
                 return False
 
+            # Periodic backup
             if self.update_count % self.backup_frequency == 0:
                 self.save_model_state(f"model_backup_v{self.current_version}.pt")
-                
-            num_users = len(self.user_encoder.classes_)
-            num_items = len(self.place_encoder.classes_)
-            self.model.resize_embedding(num_users, num_items, device)
 
-            new_user_id = torch.tensor(updated_df["user_id"].values, dtype=torch.long).to(device).unsqueeze(0)
-            new_item_id = torch.tensor(updated_df["id"].values, dtype=torch.long).to(device).unsqueeze(0)
-            new_rating = torch.tensor(updated_df["rating"].values, dtype=torch.float32).to(device).unsqueeze(0)
+            # Prepare tensors
+            new_user_id = torch.tensor(
+                updated_df["user_id"].values, 
+                dtype=torch.long, 
+                device=device
+            )
+            new_item_id = torch.tensor(
+                updated_df["id"].values, 
+                dtype=torch.long, 
+                device=device
+            )
+            new_rating = torch.tensor(
+                updated_df["rating"].values, 
+                dtype=torch.float32, 
+                device=device
+            )
 
             # Update training dataset
-            train_dataset.user_ids = torch.cat((train_dataset.user_ids.to(device), new_user_id))
-            train_dataset.item_ids = torch.cat((train_dataset.item_ids.to(device), new_item_id))
-            train_dataset.ratings = torch.cat((train_dataset.ratings.to(device), new_rating))
+            train_dataset.user_ids = torch.cat([
+                train_dataset.user_ids.to(device), 
+                new_user_id
+            ])
+            train_dataset.item_ids = torch.cat([
+                train_dataset.item_ids.to(device), 
+                new_item_id
+            ])
+            train_dataset.ratings = torch.cat([
+                train_dataset.ratings.to(device), 
+                new_rating
+            ])
 
-            # Training step
+            # Perform model update
             self.optimizer.zero_grad()
+            self.model.eval()  # Evaluation mode for prediction
+            
+            # Ensure model can handle new indices
             predictions = self.model(new_user_id, new_item_id)
             loss = self.criterion(predictions.squeeze(), new_rating)
+            
+            self.model.train()  # Back to training mode
             loss.backward()
             self.optimizer.step()
 
@@ -206,13 +231,18 @@ class DynamicModelManager:
             self.update_count += 1
             self.current_version += 1
 
-            self.logger.info(f"Model updated - Version: {self.current_version}, Loss: {loss.item():.4f}")
+            self.logger.info(
+                f"Model updated - Version: {self.current_version}, Loss: {loss.item():.4f}"
+            )
             return True
 
         except Exception as e:
-            self.logger.error(f"Model update failed: {str(e)}")
+            self.logger.error(f"Model update failed: {str(e)}", exc_info=True)
+            
+            # Attempt to restore from last backup if available
             if self.last_backup:
                 self.load_model_state(self.last_backup)
+            
             return False
 
     def get_model_stats(self):
@@ -227,9 +257,3 @@ class DynamicModelManager:
             "item_count": len(self.place_encoder.classes_),
             "last_backup": self.last_backup,
         }
-
-class DummyTrainDataset:
-    def __init__(self, device):
-        self.user_ids = torch.empty(0, dtype=torch.long, device=device)
-        self.item_ids = torch.empty(0, dtype=torch.long, device=device)
-        self.ratings = torch.empty(0, dtype=torch.float32, device=device)

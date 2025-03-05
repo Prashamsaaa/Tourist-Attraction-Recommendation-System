@@ -1,22 +1,29 @@
 import os
 import torch
+import torch.nn as nn
 import numpy as np
 import random
 import json
 from tqdm import tqdm
 from config import *
 from models import NCF
+import logging
 from dataset import (
     load_and_preprocess_data,
     create_train_test_split,
     create_dataset_and_loaders,
 )
 from train_eval import train_model, evaluate_topn
-from utils import plot_loss_curves, calculate_average_metrics
+from utils import plot_loss_curves, calculate_average_metrics, plot_hit_rate_ndcg, plot_mae_curve
 from dynamic_model_manager import DynamicModelManager
 from recommendation import generate_recommendations
 from utils import set_seed
 import matplotlib.pyplot as plt
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 def setup_seed(seed):
     set_seed(seed)  # Your existing set_seed function
@@ -48,6 +55,22 @@ def save_config(config, folder_path):
         json.dump(config, f, indent=4)
     print(f"Config saved at {config_path}")
 
+def save_metrics(last_epoch_metrics, folder_path):
+    metrics = {"last_epoch_metrics": last_epoch_metrics}
+
+    metrics_path = os.path.join(folder_path, "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=4)
+    logging.info(f"Metrics saved at {metrics_path}")
+
+def save_model(model, output_folder, epoch, model_name="model.pth"):
+    """Save the model checkpoint."""
+    model_save_path = os.path.join(output_folder, f"{model_name}_epoch{epoch}.pth")
+    try:
+        torch.save(model.state_dict(), model_save_path)
+        logging.info(f"Model saved at {model_save_path}")
+    except Exception as e:
+        logging.error(f"Error saving model: {e}")
 
 def main():
     # Set seed at the very beginning
@@ -77,8 +100,21 @@ def main():
     print(f"Model: {model}")
 
     # Training
+    # Huber Loss (Custom Implementation)
+    class HuberLoss(nn.Module):
+        def __init__(self, delta=1.0):
+            super(HuberLoss, self).__init__()
+            self.delta = delta
+
+        def forward(self, predictions, targets):
+            errors = torch.abs(predictions - targets)
+            mask = errors <= self.delta
+            loss = torch.where(mask, 0.5 * errors**2, self.delta * (errors - 0.5 * self.delta))
+            return torch.mean(loss)
+
+    # criterion = HuberLoss(delta=2.0)
     criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(
+    optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=LEARNING_RATE,
         weight_decay=WEIGHT_DECAY,
@@ -99,11 +135,41 @@ def main():
     # Generate new folder to save outputs
     output_folder = generate_new_folder(base_path="Model/outputs")
     print(f"Saving outputs to {output_folder}")
+    # Save these results to config file
+    save_model(model, output_folder, NUM_EPOCHS)
+    save_config(
+        {
+            "NUM_EPOCHS": NUM_EPOCHS,
+            "BATCH_SIZE": BATCH_SIZE,
+            "LEARNING_RATE": LEARNING_RATE,
+            "LATENT_DIM": LATENT_DIM,
+            "TOP_K": TOP_K,
+            "NUM_LAYERS": NUM_LAYERS,
+            "TEST_SIZE": TEST_SIZE,
+            "SEED": SEED,
+            "HIDDEN_LAYERS": HIDDEN_LAYERS,
+            "WEIGHT_DECAY": WEIGHT_DECAY,
+            "DROPOUT_RATE": DROPOUT_RATE,
+            "DEVICE": str(DEVICE),
+            "MODEL_SAVE_PATH": output_folder,
+        },
+        output_folder,
+    )
+    save_metrics(
+        {
+            "epoch": NUM_EPOCHS,
+            "hit_rate": metrics["hit_rates"][-1],
+            "ndcg": metrics["ndcgs"][-1],
+            "precision": metrics["precisions"][-1],
+            "recall": metrics["recalls"][-1],
+            "rmse": metrics["rmses"][-1],
+            "mae": metrics["maes"][-1],
+        },
+        output_folder,
+    )
 
-    # Save model to the new folder
-    model_save_path = os.path.join(output_folder, "model.pth")
-    torch.save(model.state_dict(), model_save_path)
-    print(f"Model saved at {model_save_path}")
+    logging.info("-------------------Training Completed-----------------------")
+    logging.info("Printing Average Metrics and Displaying Loss Curves")
 
     # Save config to the new folder
     save_config({
@@ -119,7 +185,7 @@ def main():
         "WEIGHT_DECAY": WEIGHT_DECAY,
         "DROPOUT_RATE": DROPOUT_RATE,
         "DEVICE": str(DEVICE),
-        "MODEL_SAVE_PATH": model_save_path,
+        "MODEL_SAVE_PATH": MODEL_SAVE_PATH,
         "last_epoch_metrics": metrics  # Saving last epoch metrics
     }, output_folder)
 
@@ -139,8 +205,21 @@ def main():
 
     # Save the loss plot
     plot_loss_curves(
-        train_losses=train_losses, test_losses=test_losses, num_epochs=NUM_EPOCHS
+        train_losses=train_losses, test_losses=test_losses, num_epochs=NUM_EPOCHS, output_folder=output_folder
     )
+
+       # Save the MAE plot
+    plot_mae_curve(metrics["maes"], NUM_EPOCHS, output_folder=output_folder)
+
+    # Save the Hit Rate and NDCG plot
+    plot_hit_rate_ndcg(
+        metrics["hit_rates"],
+        metrics["ndcgs"],
+        NUM_EPOCHS,
+        TOP_K,
+        output_folder=output_folder,
+    )
+
 
     # Initialize Model Manager
     model_manager = DynamicModelManager(

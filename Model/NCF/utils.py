@@ -47,7 +47,7 @@ def calculate_average_metrics(
     }
 
 
-def plot_loss_curves(train_losses, test_losses, num_epochs):
+def plot_loss_curves(train_losses, test_losses, num_epochs, output_folder):
     """
     Plot training and test loss curves.
     """
@@ -61,10 +61,14 @@ def plot_loss_curves(train_losses, test_losses, num_epochs):
     plt.title("Training and Test Loss Curve")
     plt.legend()
     plt.grid(True)
+
+    loss_plot_path = os.path.join(output_folder, "loss_curve.png")
+    plt.savefig(loss_plot_path)
+    print(f"Loss curve saved at {loss_plot_path}")
     plt.show()
 
 
-def plot_mae_curve(maes, num_epochs):
+def plot_mae_curve(maes, num_epochs, output_folder):
     """
     Plot Mean Absolute Error (MAE) curve.
     """
@@ -75,21 +79,26 @@ def plot_mae_curve(maes, num_epochs):
     plt.ylabel("MAE")
     plt.legend()
     plt.grid(True)
+
+    mae_plot_path = os.path.join(output_folder, "mae_curve.png")
+    plt.savefig(mae_plot_path)
+    print(f"MAE curve saved at {mae_plot_path}")
     plt.show()
 
 
-def plot_hit_rate_ndcg(hit_rates, ndcgs, num_epochs, top_k):
+def plot_hit_rate_ndcg(hit_rates, ndcgs, num_epochs, top_k, output_folder):
     """
     Plot Hit Rate and NDCG curves.
     """
     plt.figure(figsize=(10, 6))
-    plt.plot(
-        range(1, num_epochs + 1), hit_rates, label=f"Hit Rate@{top_k}", color="green"
-    )
+    plt.plot(range(1, num_epochs + 1), hit_rates, label=f"Hit Rate@{top_k}", color="green")
     plt.plot(range(1, num_epochs + 1), ndcgs, label=f"NDCG@{top_k}", color="purple")
     plt.xlabel("Epochs")
     plt.ylabel("Metrics")
     plt.title("Hit Rate and NDCG")
     plt.legend()
     plt.grid(True)
+    hit_ndcg_plot_path = os.path.join(output_folder, "hit_rate_ndcg_curve.png")
+    plt.savefig(hit_ndcg_plot_path)
+    print(f"Hit Rate & NDCG curve saved at {hit_ndcg_plot_path}")
     plt.show()

@@ -9,6 +9,7 @@ from metrics import (
     calculate_mae,
 )
 from config import *
+from torchmetrics.retrieval import RetrievalHitRate, RetrievalNormalizedDCG, RetrievalPrecision, RetrievalRecall
 
 
 def train_model(
@@ -50,7 +51,7 @@ def train_model(
 
             loss = criterion(predictions.squeeze(), ratings)
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
             running_loss += loss.item()
 
@@ -80,10 +81,10 @@ def train_model(
 
         train_losses.append(avg_train_loss)
         test_losses.append(avg_test_loss)
-        hit_rate, ndcg, precision, recall = evaluate_topn(
-            model, test_loader, num_items, top_k=TOP_K, device=DEVICE
-        )
-
+        # hit_rate, ndcg, precision, recall = evaluate_topn(
+            # model, test_loader, num_items, top_k=TOP_K, device=DEVICE
+        # )
+        hit_rate, ndcg, precision, recall = evaluate_recommendations(all_preds, all_targets, TOP_K)
         metrics["hit_rates"].append(hit_rate)
         metrics["ndcgs"].append(ndcg)
         metrics["precisions"].append(precision)
@@ -115,15 +116,50 @@ def train_model(
     }
 
     # Save these results to config file
-    save_config(last_epoch_metrics)
+    # save_config(last_epoch_metrics)
 
     print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
     torch.save(model.state_dict(), MODEL_SAVE_PATH) 
 
     return train_losses, test_losses, metrics
-
-
-
+def evaluate_recommendations(preds, target, top_k=10):
+    # Ensure inputs are tensors
+    if not isinstance(preds, torch.Tensor):
+        preds = torch.tensor(preds)
+    if not isinstance(target, torch.Tensor):
+        target = torch.tensor(target)
+    
+    # Create index tensor
+    indexes = torch.arange(len(preds))
+    
+    # Create binary target (items above mean are considered relevant)
+    binary_target = target >= 4
+    
+    # Initialize metrics with reset
+    hit_rate = RetrievalHitRate(top_k=top_k)
+    ndcg = RetrievalNormalizedDCG(top_k=top_k)
+    precision = RetrievalPrecision(top_k=top_k)
+    recall = RetrievalRecall(top_k=top_k)
+    
+    # Explicitly reset metrics before use
+    hit_rate.reset()
+    ndcg.reset()
+    precision.reset()
+    recall.reset()
+    
+    # Update metrics
+    hit_rate.update(preds, binary_target, indexes)
+    ndcg.update(preds, binary_target, indexes)
+    precision.update(preds, binary_target, indexes)
+    recall.update(preds, binary_target, indexes)
+    
+    # Compute metrics
+    hit_rate_value = hit_rate.compute().item()
+    ndcg_value = ndcg.compute().item()
+    precision_value = precision.compute().item()
+    recall_value = recall.compute().item()
+    
+    return hit_rate_value, ndcg_value, precision_value, recall_value
 
 def evaluate_topn(model, test_loader, num_items, top_k, device):
     """Evaluate model using top-K metrics"""
