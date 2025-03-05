@@ -144,7 +144,7 @@ def main():
 
     # Initialize Model Manager
     model_manager = DynamicModelManager(
-        model, optimizer, criterion, user_encoder, place_encoder
+        model, optimizer, criterion, user_encoder, place_encoder, backup_frequency= 2
     )
 
     # Generate recommendations

@@ -3,6 +3,7 @@ import numpy as np
 import scipy.sparse
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import implicit
+import torch
 
 # Load user-item interaction data
 df = pd.read_csv('./Model/Data/all_ratings.csv')
@@ -73,9 +74,7 @@ def recommend_places(user_id, num_recommendations=5):
         recommendations_with_descriptions.append(entry)
     
     return recommendations_with_descriptions
-
-
-def calculate_metrics(actual_ratings, predicted_ratings, rated_mask, k=5, relevance_threshold=3):
+def calculate_metrics(actual_ratings, predicted_ratings, rated_mask, k=5, relevance_threshold=4):
     # Global error metrics using rated_mask
     actual_flat = actual_ratings[rated_mask]
     predicted_flat = predicted_ratings[rated_mask]
@@ -95,40 +94,36 @@ def calculate_metrics(actual_ratings, predicted_ratings, rated_mask, k=5, releva
         
         if len(user_actual) == 0:  # Skip users with no ratings
             continue
-            
+        
         # Get top k predicted items indices
-        predicted_order = np.argsort(-user_predicted)
+        predicted_order = np.argsort(-user_predicted)  # negative for descending order
         top_k_indices = predicted_order[:k]
         
-        # Get relevant items indices (actual >= threshold)
+        # Get relevant items (actual >= threshold)
         relevant_indices = np.where(user_actual >= relevance_threshold)[0]
         
-        # Precision@k calculation
+        # Precision@k and Recall@k calculation
         recommended_relevant = np.intersect1d(top_k_indices, relevant_indices)
-        precision = len(recommended_relevant) / k if k > 0 else 0.0
+        precision = len(recommended_relevant) / k if k > 0 else 0
+        recall = len(recommended_relevant) / len(relevant_indices) if len(relevant_indices) > 0 else 0
         
-        # Recall@k calculation
-        recall = len(recommended_relevant) / len(relevant_indices) if len(relevant_indices) > 0 else 0.0
-        
-        # Hit Rate@k calculation
-        hit_rate = 1.0 if len(recommended_relevant) > 0 else 0.0
+        # Hit Rate@k calculation - 1 if any recommended item is in actual items
+        hit_rate = 1 if len(recommended_relevant) > 0 else 0
         
         # NDCG@k calculation
         dcg = 0.0
-        idcg = 0.0
+        for i, item in enumerate(top_k_indices):
+            relevance = user_actual[item]  # Get rating as relevance
+            dcg += relevance / np.log2(i + 2)
         
-        # Calculate DCG for predicted order
-        for i, idx in enumerate(top_k_indices):
-            rel = user_actual[idx]
-            dcg += rel / np.log2(i + 2)  # +2 since index starts at 0
-            
-        # Calculate IDCG for ideal order
+        # Calculate IDCG using actual ratings
         ideal_order = np.argsort(-user_actual)
-        for i, idx in enumerate(ideal_order[:k]):
-            rel = user_actual[idx]
-            idcg += rel / np.log2(i + 2)
-            
-        ndcg = dcg / idcg if idcg > 0 else 0.0
+        idcg = 0.0
+        for i, item in enumerate(ideal_order[:k]):
+            relevance = user_actual[item]
+            idcg += relevance / np.log2(i + 2)
+        
+        ndcg = dcg / idcg if idcg > 0 else 0
         
         precision_scores.append(precision)
         recall_scores.append(recall)
@@ -138,10 +133,10 @@ def calculate_metrics(actual_ratings, predicted_ratings, rated_mask, k=5, releva
     return {
         "RMSE": rmse,
         "MAE": mae,
-        "Precision@k": np.nanmean(precision_scores),
-        "Recall@k": np.nanmean(recall_scores),
-        "HitRate@k": np.nanmean(hit_rates),
-        "NDCG@k": np.nanmean(ndcg_scores)
+        "Precision@k": np.mean(precision_scores),
+        "Recall@k": np.mean(recall_scores),
+        "HitRate@k": np.mean(hit_rates),
+        "NDCG@k": np.mean(ndcg_scores)
     }
 
 # Generate predicted ratings matrix using the trained model

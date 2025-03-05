@@ -4,6 +4,8 @@ import numpy as np
 import logging
 from collections import deque
 from datetime import datetime
+from NCF.models import GMF
+
 
 
 class DynamicModelManager:
@@ -145,6 +147,7 @@ class DynamicModelManager:
         except Exception as e:
             self.logger.error(f"Failed to load model state: {str(e)}")
             return False
+    
 
     # def load_model_state(self, path='model_backup.pt'):
     #     """Load model state from file"""
@@ -177,27 +180,19 @@ class DynamicModelManager:
 
             if self.update_count % self.backup_frequency == 0:
                 self.save_model_state(f"model_backup_v{self.current_version}.pt")
+                
+            num_users = len(self.user_encoder.classes_)
+            num_items = len(self.place_encoder.classes_)
+            self.model.resize_embedding(num_users, num_items, device)
 
-            new_user_id = torch.tensor(
-                updated_df["user_id"].values, dtype=torch.long
-            ).to(device)
-            new_item_id = torch.tensor(updated_df["id"].values, dtype=torch.long).to(
-                device
-            )
-            new_rating = torch.tensor(
-                updated_df["rating"].values, dtype=torch.float32
-            ).to(device)
+            new_user_id = torch.tensor(updated_df["user_id"].values, dtype=torch.long).to(device).unsqueeze(0)
+            new_item_id = torch.tensor(updated_df["id"].values, dtype=torch.long).to(device).unsqueeze(0)
+            new_rating = torch.tensor(updated_df["rating"].values, dtype=torch.float32).to(device).unsqueeze(0)
 
             # Update training dataset
-            train_dataset.user_ids = torch.cat(
-                (train_dataset.user_ids.to(device), new_user_id)
-            )
-            train_dataset.item_ids = torch.cat(
-                (train_dataset.item_ids.to(device), new_item_id)
-            )
-            train_dataset.ratings = torch.cat(
-                (train_dataset.ratings.to(device), new_rating)
-            )
+            train_dataset.user_ids = torch.cat((train_dataset.user_ids.to(device), new_user_id))
+            train_dataset.item_ids = torch.cat((train_dataset.item_ids.to(device), new_item_id))
+            train_dataset.ratings = torch.cat((train_dataset.ratings.to(device), new_rating))
 
             # Training step
             self.optimizer.zero_grad()
@@ -211,9 +206,7 @@ class DynamicModelManager:
             self.update_count += 1
             self.current_version += 1
 
-            self.logger.info(
-                f"Model updated - Version: {self.current_version}, Loss: {loss.item():.4f}"
-            )
+            self.logger.info(f"Model updated - Version: {self.current_version}, Loss: {loss.item():.4f}")
             return True
 
         except Exception as e:
@@ -234,3 +227,9 @@ class DynamicModelManager:
             "item_count": len(self.place_encoder.classes_),
             "last_backup": self.last_backup,
         }
+
+class DummyTrainDataset:
+    def __init__(self, device):
+        self.user_ids = torch.empty(0, dtype=torch.long, device=device)
+        self.item_ids = torch.empty(0, dtype=torch.long, device=device)
+        self.ratings = torch.empty(0, dtype=torch.float32, device=device)

@@ -50,7 +50,7 @@ def train_model(
 
             loss = criterion(predictions.squeeze(), ratings)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
             running_loss += loss.item()
 
@@ -171,9 +171,9 @@ def evaluate_topn(model, test_loader, num_items, top_k, device):
         return 0.0, 0.0, 0.0, 0.0
 
     # Calculate final metrics
-    hit_rate = np.mean(hits)
-    mean_ndcg = np.mean(ndcgs)
-    mean_precision = np.mean(precisions)
-    mean_recall = np.mean(recalls)
+    hit_rate = np.nanmean(hits)
+    mean_ndcg = np.nanmean(ndcgs)
+    mean_precision = np.nanmean(precisions)
+    mean_recall = np.nanmean(recalls)
 
     return hit_rate, mean_ndcg, mean_precision, mean_recall

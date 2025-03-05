@@ -116,7 +116,7 @@ class DistilBERTRecommender:
                 embedding_subset = np.vstack(embedding_subset)
                 similarities = cosine_similarity(place_embedding, embedding_subset).flatten()
                 filtered_data['Similarity_Score'] = similarities
-                print("UNDERSTAND THIS")
+                # print("UNDERSTAND THIS")
                 # Weighted combination of similarity and rating
                 filtered_data['Recommendation_Score'] = 0.7 * filtered_data['Similarity_Score'] + 0.3 * row['rating']
 

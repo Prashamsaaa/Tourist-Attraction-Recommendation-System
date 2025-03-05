@@ -10,9 +10,10 @@ from Hybrid.hybrid_recommender import HybridRecommender
 from NCF.dataset import load_and_preprocess_data
 from NCF.models import NCF
 from NCF.config import *
+from NCF.dynamic_model_manager import DynamicModelManager, DummyTrainDataset
 
 logging.basicConfig(level=logging.INFO)
-
+Device = 'cpu'
 DATA_PATHS = {
     'content': "Model/Data/PreparedData.csv",
     'ratings': "Model/Data/all_ratings.csv",
@@ -61,7 +62,7 @@ def load_data_and_models():
         num_items=len(place_encoder.classes_), 
         latent_dim=LATENT_DIM
     )
-    
+    torch.serialization.add_safe_globals([NCF])
     checkpoint = torch.load(DATA_PATHS['model'], map_location='cpu')
     ncf_recommender.load_state_dict(checkpoint if isinstance(checkpoint, dict) else checkpoint)
 
@@ -78,15 +79,27 @@ def main():
             distilbert_recommender, 
             ncf_recommender
         )
+            # Set up an optimizer and a loss function for the NCF model.
+        optimizer = torch.optim.Adam(ncf_recommender.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+        criterion = torch.nn.MSELoss()
+        # Initialize the DynamicModelManager with the NCF model and encoders.
+        model_manager = DynamicModelManager(ncf_recommender, optimizer, criterion, user_encoder, place_encoder, backup_frequency=2)
+        # Create an empty DummyTrainDataset to accumulate online updates.
+        dynamic_train_dataset = DummyTrainDataset(Device)
 
         provinces = content_recommender.data['Province'].unique()
         categories = content_recommender.data['Category'].unique()
 
         while True:
             print("\n--- Recommendation System ---")
-            user_type = input("Are you a new user or an old user? (new/old): ").strip().lower()
+            print("Options:")
+            print("  new  - Get recommendations for a new user")
+            print("  old  - Get recommendations for an existing user")
+            print("  feed - Provide rating feedback to update the model")
+            print("  exit - Quit")
+            option = input("Enter option: ").strip().lower()
 
-            if user_type == "new":
+            if option == "new":
                 try:
                     print(f"Available Provinces: {provinces}")
                     province = input("Enter your preferred province: ").strip()
@@ -127,7 +140,7 @@ def main():
                 except ValueError as e:
                     print(f"Error: {e}")
 
-            elif user_type == "old":
+            elif option == "old":
                 try:
                     user_id = int(input("Enter your User ID: "))
                     if user_id < 0:
@@ -156,8 +169,43 @@ def main():
                     print(f"Input Error: {e}")
                 except Exception as e:
                     print(f"An unexpected error occurred: {e}")
+            
+            
+            elif option == "feed":
+                try:
+                    # Gather user feedback to update the model.
+                    user_input = input("Enter your User ID (numeric or string): ").strip()
+                    try:
+                        user_feedback = int(user_input)
+                    except ValueError:
+                        user_feedback = user_input
+
+                    item_feedback = input("Enter the Item ID you want to rate: ").strip()
+                    rating_feedback = float(input("Enter your rating (0-5): ").strip())
+                    if not (0 <= rating_feedback <= 5):
+                        raise ValueError("Rating must be between 0 and 5.")
+
+                    new_rating_data = {"user_id": user_feedback, "id": item_feedback, "rating": rating_feedback}
+
+                    update_success = model_manager.update_model(new_rating_data, dynamic_train_dataset, Device)
+                    if update_success:
+                        print("Dynamic model update successful!")
+                        stats = model_manager.get_model_stats()
+                        print("Model Stats:")
+                        for key, value in stats.items():
+                            print(f"  {key}: {value}")
+                    else:
+                        print("Dynamic model update failed.")
+
+                except Exception as e:
+                    print(f"Error during model update: {e}")
+            
+            
+            elif option == "exit":
+                print("Exiting Recommendation System. Goodbye!")
+                break
             else:
-                print("Invalid user type. Please enter 'new' or 'old'.")
+                print("Invalid option.Please try again.")
 
     except Exception as e:
         print(f"System Error: {e}")
