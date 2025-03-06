@@ -37,11 +37,29 @@ def validate_input(user_input, valid_options):
     if user_input not in valid_options:
         raise ValueError(f"Invalid input: '{user_input}'. Please choose from {valid_options}.")
 
-def get_category_tags(content_recommender, category):
-    """Retrieve tags for a specific category."""
-    if category in content_recommender.categorized_tags:
-        return sorted(content_recommender.categorized_tags[category])
-    return []
+def get_category_tags(content_recommender, categories):
+    """
+    Get tags for specified categories, handling different input formats.
+    
+    :param content_recommender: ContentBasedRecommender instance
+    :param categories: Categories as string or list. If string, can be comma-separated.
+    :return: List of tags associated with the categories
+    """
+    # Check if categories is a string
+    if isinstance(categories, str):
+        # Split by comma and strip whitespace
+        categories = [cat.strip() for cat in categories.split(',') if cat.strip()]
+        print(f"Converted to list: {categories}")
+    
+    # Handle empty list case
+    if not categories:
+        print("No categories specified")
+        return []
+    
+    # Retrieve tags for all specified categories
+    category_tags = content_recommender.get_available_tags(categories=categories)
+    return category_tags
+
 
 def load_data_and_models():
     """Load all necessary data and models for the recommendation system."""
@@ -161,12 +179,11 @@ def main():
                         print(f"\nAvailable Categories: {categories}")
                         category = input("Enter your preferred category: ").strip()
                         validate_input(category, categories)
-
+                        print(category)
                         category_tags = get_category_tags(content_recommender, category)
                         if not category_tags:
                             print(f"No tags found for category '{category}'")
                             continue
-
                         print(f"\nAvailable Tags for {category}:")
                         for i in range(0, len(category_tags), 5):
                             print(", ".join(category_tags[i:i+5]))
