@@ -5,7 +5,6 @@ import logging
 from collections import deque
 from datetime import datetime
 
-
 class DynamicModelManager:
     def __init__(
         self,
@@ -61,29 +60,27 @@ class DynamicModelManager:
         """Update encoders with new user/item IDs if needed"""
         new_df = pd.DataFrame([new_rating_data])
 
-        for col, encoder in [
-            ("user_id", self.user_encoder),
-            ("id", self.place_encoder),
-        ]:
-            original_id = new_df[col].iloc[0]
-            if original_id not in encoder.classes_:
-                self.logger.info(
-                    f"New {col.replace('_', ' ').title()} found: {original_id}. Adding to encoder."
-                )
-                encoder.classes_ = np.append(encoder.classes_, original_id)
-                try:
-                    new_encoded_val = encoder.transform([original_id])[0]
-                    new_df[col] = new_encoded_val
-                except Exception as e:
-                    self.logger.error(f"Error encoding new {col}: {e}")
-                    return None
-            else:
-                new_df[col] = encoder.transform(new_df[col])
+        user_id = new_rating_data['user_id']
+        item_id = new_rating_data['id']
 
-        return new_df
+        # Update user encoder
+        if user_id not in self.user_encoder.classes_:
+            self.logger.info(f"New User ID found: {user_id}. Adding to encoder.")
+            self.user_encoder.classes_ = np.append(self.user_encoder.classes_, user_id)
 
-    def save_model_state(self, path="model_backup.pt"):
-        """Save current model state with metadata"""
+        # Update item encoder
+        if item_id not in self.place_encoder.classes_:
+            self.logger.info(f"New Item ID found: {item_id}. Adding to encoder.")
+            self.place_encoder.classes_ = np.append(self.place_encoder.classes_, item_id)
+
+        # Transform the user and item IDs
+        encoded_user_id = self.user_encoder.transform([user_id])[0]
+        encoded_item_id = self.place_encoder.transform([item_id])[0]
+
+        return encoded_user_id, encoded_item_id
+
+    def save_model_state(self, path="model_backup.pt", save_dataset=True):
+        """Save current model state with metadata and optionally the dataset"""
         try:
             # Create a complete state dictionary with the entire model
             state = {
@@ -107,6 +104,21 @@ class DynamicModelManager:
             torch.save(state, path)
             self.last_backup = path
             self.logger.info(f"Complete model state saved to {path}")
+
+            if save_dataset:
+                # Convert dataset to DataFrame and save to CSV
+                try:
+                    df = pd.DataFrame({
+                        'user_id': [self.user_encoder.inverse_transform([int(user_id)])[0] for user_id in self.train_dataset.user_ids.cpu().numpy()],
+                        'item_id': [self.place_encoder.inverse_transform([int(item_id)])[0] for item_id in self.train_dataset.item_ids.cpu().numpy()],
+                        'rating': self.train_dataset.ratings.cpu().numpy()
+                    })
+                    dataset_path = "updated_dataset.csv"
+                    df.to_csv(dataset_path, index=False)
+                    self.logger.info(f"Updated dataset saved to {dataset_path}")
+                except Exception as e:
+                    self.logger.error(f"Failed to save dataset: {str(e)}")
+
             return True
 
         except Exception as e:
@@ -172,18 +184,12 @@ class DynamicModelManager:
             if not self.validate_rating_data(new_rating_data):
                 return False
 
-            updated_df = self.update_encoders(new_rating_data)
-            if updated_df is None:
-                return False
+            # Update encoders and get encoded IDs
+            encoded_user_id, encoded_item_id = self.update_encoders(new_rating_data)
 
-            if self.update_count % self.backup_frequency == 0:
-                self.save_model_state(f"model_backup_v{self.current_version}.pt")
-
-            new_user_id = torch.tensor(
-                updated_df["user_id"].values, dtype=torch.long, device=device)
-            new_item_id = torch.tensor(updated_df["id"].values, dtype=torch.long, device=device)
-            new_rating = torch.tensor(
-                updated_df["rating"].values, dtype=torch.float32, device=device)
+            new_user_id = torch.tensor([encoded_user_id], dtype=torch.long, device=device)
+            new_item_id = torch.tensor([encoded_item_id], dtype=torch.long, device=device)
+            new_rating = torch.tensor([new_rating_data['rating']], dtype=torch.float32, device=device)
 
             # Update training dataset
             train_dataset.user_ids = torch.cat(
@@ -195,6 +201,9 @@ class DynamicModelManager:
             train_dataset.ratings = torch.cat(
                 (train_dataset.ratings.to(device), new_rating)
             )
+
+            # Assign the train_dataset to self so that it can be accessed in save_model_state
+            self.train_dataset = train_dataset
 
             # Training step
             self.optimizer.zero_grad()

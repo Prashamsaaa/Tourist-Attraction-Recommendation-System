@@ -246,14 +246,9 @@ def main():
                 # Dynamic Model Update
                 print("\n--- Update Model ---")
                 try:
-                    print("Enter a new rating to update the model")
                     user_id = int(input("User ID: "))
                     item_id = int(input("Item ID: "))
                     rating = float(input("Rating (0-5): "))
-
-                    # Validate rating
-                    if not (0 <= rating <= 5):
-                        raise ValueError("Rating must be between 0 and 5")
 
                     # Prepare rating data
                     new_rating_data = {
