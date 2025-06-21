@@ -230,6 +230,21 @@ def main():
                 user_type = input("Are you a new user or an old user? (new/old): ").strip().lower()
 
                 if user_type == "new":
+                    print(f"Available Provinces: {provinces}")
+                    province = input("Enter your preferred province: ").strip()
+                    validate_input(province, provinces)
+            print("\n--- Dynamic Recommendation System ---")
+            print("1. Recommendation")
+            print("2. Update Model")
+            print("3. View Model Stats")
+            print("4. Exit")
+            
+            choice = input("Enter your choice (1-4): ").strip()
+
+            if choice == "1":
+                user_type = input("Are you a new user or an old user? (new/old): ").strip().lower()
+
+                if user_type == "new":
                     try:
                         print(f"Available Provinces: {provinces}")
                         province = input("Enter your preferred province: ").strip()
@@ -270,6 +285,10 @@ def main():
                     except ValueError as e:
                         print(f"Error: {e}")
 
+                elif user_type == "old":
+                        user_id = int(input("Enter your User ID: "))
+                        if user_id < 0:
+                            raise ValueError("User ID must be a positive number")
                 elif user_type == "old":
                     try:
                         user_id = int(input("Enter your User ID: "))
@@ -338,6 +357,18 @@ def main():
 
                 except ValueError as e:
                     print(f"Input Error: {e}")
+
+            elif choice == "3":
+                # View Model Statistics
+                model_stats = dynamic_model_manager.get_model_stats()
+                print("\n--- Model Statistics ---")
+                for key, value in model_stats.items():
+                    print(f"{key}: {value}")
+
+            elif choice == "4":
+                # Exit the system
+                print("Exiting the Dynamic Recommendation System. Goodbye!")
+                break
 
             elif choice == "3":
                 # View Model Statistics

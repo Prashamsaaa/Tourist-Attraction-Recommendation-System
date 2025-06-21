@@ -2,6 +2,50 @@ venv/
 venvy/
 .venv/
 .vscode/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings
 
-__pycache__/
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+Notebook/*
+!Notebook/README.md
 
+# Project specific
+*.db
+model_backup*.pt
+*.pth
+.DS_Store
+*.csv
+*.npy
+Dump/
+dump/
+
+# Environment variables
+.env
+.env.*
+*.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Config files that might contain secrets
+config.local.json
+*_secret*.json
+*_key*.json
+credentials.json
+
+# Logs
+*.log
+logs/
+
+# Web Scraping data and outputs
+Web Scraping/*
+!Web Scraping/src/
+!Web Scraping/README.md
+Web Scraping/**/*.csv
+Web Scraping/outputs/
