@@ -1,10 +1,8 @@
 import sqlite3
 
-# Connect to the database (replace 'your_database.db' with your actual database file)
 conn = sqlite3.connect('tourist_attractions.db')
 cursor = conn.cursor()
 
-# Step 1: Create tables if they don't exist
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS attractions_nepal (
     id INTEGER PRIMARY KEY,
@@ -27,7 +25,6 @@ CREATE TABLE IF NOT EXISTS manual (
 );
 ''')
 
-# Step 2: Execute the update query to replace names in the manual table
 sql_query = """
 UPDATE manual
 SET name = (
@@ -45,14 +42,11 @@ WHERE EXISTS (
 """
 
 try:
-    # Execute the query to update names
     cursor.execute(sql_query)
 
-    # Commit changes
     conn.commit()
     print("Name replacement completed successfully.")
 
-    # Fetch and display updated data from the manual table
     cursor.execute("SELECT * FROM manual")
     rows = cursor.fetchall()
 

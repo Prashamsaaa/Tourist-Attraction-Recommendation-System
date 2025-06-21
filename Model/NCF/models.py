@@ -1,5 +1,5 @@
 import torch
-from config import *
+from .config import *
 import torch.nn as nn
 
 

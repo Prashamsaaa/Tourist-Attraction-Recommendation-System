@@ -1,5 +1,4 @@
 import torch
-import json
 
 # Hyperparameters
 NUM_EPOCHS = 30
@@ -8,7 +7,7 @@ BATCH_SIZE = 128
 LEARNING_RATE = 0.0005
 LATENT_DIM = 128
 
-TOP_K = 5
+TOP_K = 10
 NUM_LAYERS = 3
 TEST_SIZE = 0.2
 SEED = 32

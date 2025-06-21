@@ -42,7 +42,7 @@ class HybridRecommender:
             # Get recommendations using content-based filtering
             recommendations = self.content_recommender.recommend(
                 province=province,
-                category=category,
+                categories=category,
                 tags=tags,
                 top_n=5
             )

@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from tqdm import tqdm
-from metrics import (
+from .metrics import (
     calculate_hit_rate,
     calculate_ndcg,
     calculate_precision_recall,
@@ -35,6 +35,22 @@ def train_model(
 
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
+    model.to(device)
+
+    # Initialize model version and architecture info
+    num_users = len(train_loader.dataset.user_ids)  # Define num_users based on your dataset
+
+    model_info = {
+        'version': '1.0.0',
+        'architecture': {
+            'num_users': num_users,
+            'num_items': num_items,
+            'latent_dim': LATENT_DIM,
+            'hidden_layers': HIDDEN_LAYERS
+        },
+        'timestamp': str(datetime.now())
+    }
+
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -49,7 +65,11 @@ def train_model(
             optimizer.zero_grad()
             predictions = model(user_ids, item_ids)
 
-            loss = criterion(predictions.squeeze(), ratings)
+            # Ensure predictions and ratings have the same shape
+            if predictions.shape != ratings.shape:
+                predictions = predictions.view_as(ratings)
+
+            loss = criterion(predictions, ratings)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
@@ -119,7 +139,15 @@ def train_model(
     # save_config(last_epoch_metrics)
 
     print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
-    torch.save(model.state_dict(), MODEL_SAVE_PATH) 
+    # Save model with architecture metadata
+    checkpoint = {
+        'state_dict': model.state_dict(),
+        'model_info': model_info,
+        'version': model_info['version'],
+        'architecture': model_info['architecture'],
+        'timestamp': model_info['timestamp']
+    }
+    torch.save(checkpoint, MODEL_SAVE_PATH)
 
     return train_losses, test_losses, metrics
 def evaluate_recommendations(preds, target, top_k=10):
@@ -169,6 +197,7 @@ def evaluate_topn(model, test_loader, num_items, top_k, device):
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Evaluating"):
             user_ids, item_ids, ratings = (t.to(device) for t in batch)
+
 
             # Get positive items (ensure list format)
             positive_mask = ratings >= ratings.mean()
