@@ -161,10 +161,7 @@ def main():
         (content_recommender, distilbert_recommender, ncf_recommender, 
          descriptions, ratings, user_encoder, place_encoder, 
          train_loader, test_loader, train_df, test_df) = load_data_and_models()
-         descriptions, ratings, user_encoder, place_encoder, 
-         train_loader, test_loader, train_df, test_df) = load_data_and_models()
         
-        # Setup Hybrid Recommender
         # Setup Hybrid Recommender
         hybrid_recommender = HybridRecommender(
             content_recommender, 
