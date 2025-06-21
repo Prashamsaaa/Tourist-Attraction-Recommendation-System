@@ -6,6 +6,9 @@ import torch
 from torch.utils.data import DataLoader
 
 # Import necessary modules
+from torch.utils.data import DataLoader
+
+# Import necessary modules
 from ContentBased.content_based import ContentBasedRecommender
 from DistilBert.distilbert import DistilBERTRecommender
 from NCF.recommendation import generate_recommendations
@@ -13,6 +16,16 @@ from Hybrid.hybrid_recommender import HybridRecommender
 from NCF.dataset import load_and_preprocess_data, create_dataset_and_loaders, NCFDataset, create_train_test_split
 from NCF.models import NCF, GMF
 from NCF.config import *
+from NCF.train_eval import train_model
+from NCF.dynamic_model_manager import DynamicModelManager
+from NCF.utils import set_seed
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Data paths configuration
 from NCF.train_eval import train_model
 from NCF.dynamic_model_manager import DynamicModelManager
 from NCF.utils import set_seed
@@ -33,6 +46,7 @@ DATA_PATHS = {
 }
 
 def validate_input(user_input, valid_options):
+    """Validate user input against a list of valid options."""
     """Validate user input against a list of valid options."""
     if user_input not in valid_options:
         raise ValueError(f"Invalid input: '{user_input}'. Please choose from {valid_options}.")
@@ -59,6 +73,7 @@ def get_category_tags(content_recommender, categories):
     # Retrieve tags for all specified categories
     category_tags = content_recommender.get_available_tags(categories=categories)
     return category_tags
+
 
 
 def load_data_and_models():
@@ -133,7 +148,12 @@ def setup_dynamic_model_manager(ncf_recommender, ratings_df, user_encoder, place
 
 def main():
     """Main function to run the dynamic recommendation system."""
+    """Main function to run the dynamic recommendation system."""
     try:
+        # Set random seed for reproducibility
+        set_seed(SEED)
+
+        # Load data and models
         # Set random seed for reproducibility
         set_seed(SEED)
 
@@ -141,7 +161,10 @@ def main():
         (content_recommender, distilbert_recommender, ncf_recommender, 
          descriptions, ratings, user_encoder, place_encoder, 
          train_loader, test_loader, train_df, test_df) = load_data_and_models()
+         descriptions, ratings, user_encoder, place_encoder, 
+         train_loader, test_loader, train_df, test_df) = load_data_and_models()
         
+        # Setup Hybrid Recommender
         # Setup Hybrid Recommender
         hybrid_recommender = HybridRecommender(
             content_recommender, 
@@ -155,10 +178,39 @@ def main():
         )
 
         # Get available provinces and categories
+
+        # Setup Dynamic Model Manager
+        dynamic_model_manager = setup_dynamic_model_manager(
+            ncf_recommender, ratings, user_encoder, place_encoder
+        )
+
+        # Get available provinces and categories
         provinces = content_recommender.data['Province'].unique()
         categories = content_recommender.data['Category'].unique()
 
+        # Debug: Print tags for Nature category
+        nature_tags = get_category_tags(content_recommender, 'Nature')
+        print("\nAvailable tags for Nature category:")
+        for i in range(0, len(nature_tags), 5):
+            print(", ".join(nature_tags[i:i+5]))
+
         while True:
+            print("\n--- Dynamic Recommendation System ---")
+            print("1. Recommendation")
+            print("2. Update Model")
+            print("3. View Model Stats")
+            print("4. Exit")
+            
+            choice = input("Enter your choice (1-4): ").strip()
+
+            if choice == "1":
+                user_type = input("Are you a new user or an old user? (new/old): ").strip().lower()
+
+                if user_type == "new":
+                    try:
+                        print(f"Available Provinces: {provinces}")
+                        province = input("Enter your preferred province: ").strip()
+                        validate_input(province, provinces)
             print("\n--- Dynamic Recommendation System ---")
             print("1. Recommendation")
             print("2. Update Model")
@@ -190,11 +242,21 @@ def main():
 
                         tags_input = input("\nEnter your preferred tags (comma-separated): ").strip()
                         tags = [tag.strip() for tag in tags_input.split(',') if tag.strip()]
+                        tags_input = input("\nEnter your preferred tags (comma-separated): ").strip()
+                        tags = [tag.strip() for tag in tags_input.split(',') if tag.strip()]
 
                         invalid_tags = [tag for tag in tags if tag not in category_tags]
                         if invalid_tags:
                             raise ValueError(f"Invalid tags: {invalid_tags}")
+                        invalid_tags = [tag for tag in tags if tag not in category_tags]
+                        if invalid_tags:
+                            raise ValueError(f"Invalid tags: {invalid_tags}")
 
+                        recommendations = hybrid_recommender.recommend_for_new_user(
+                            province=province,
+                            category=category,
+                            tags=tags
+                        )
                         recommendations = hybrid_recommender.recommend_for_new_user(
                             province=province,
                             category=category,
@@ -206,7 +268,14 @@ def main():
                         else:
                             print("\n--- Recommendations for New User ---")
                             print(recommendations.to_string(index=False))
+                        if recommendations.empty:
+                            print("\nNo recommendations found for your preferences.")
+                        else:
+                            print("\n--- Recommendations for New User ---")
+                            print(recommendations.to_string(index=False))
 
+                    except ValueError as e:
+                        print(f"Error: {e}")
                     except ValueError as e:
                         print(f"Error: {e}")
 
@@ -215,7 +284,15 @@ def main():
                         user_id = int(input("Enter your User ID: "))
                         if user_id < 0:
                             raise ValueError("User ID must be a positive number")
+                elif user_type == "old":
+                    try:
+                        user_id = int(input("Enter your User ID: "))
+                        if user_id < 0:
+                            raise ValueError("User ID must be a positive number")
 
+                        print(f"\nAvailable Provinces: {provinces}")
+                        preferred_province = input("Enter your preferred province: ").strip()
+                        validate_input(preferred_province, provinces)
                         print(f"\nAvailable Provinces: {provinces}")
                         preferred_province = input("Enter your preferred province: ").strip()
                         validate_input(preferred_province, provinces)
@@ -228,7 +305,20 @@ def main():
                             user_encoder=user_encoder,
                             place_encoder=place_encoder
                         )
+                        recommendations = hybrid_recommender.recommend_for_old_user(
+                            user_id=user_id,
+                            descriptions_all=descriptions,
+                            ratings=ratings,
+                            preferred_province=preferred_province,
+                            user_encoder=user_encoder,
+                            place_encoder=place_encoder
+                        )
 
+                        if recommendations.empty:
+                            print("\nNo recommendations found for your preferences.")
+                        else:
+                            print("\n--- Recommendations for Old User ---")
+                            print(recommendations.to_string(index=False))
                         if recommendations.empty:
                             print("\nNo recommendations found for your preferences.")
                         else:
@@ -268,7 +358,11 @@ def main():
                         print("Model updated successfully!")
                         # Optional: Retrain or validate the model incrementally
                         dynamic_model_manager.save_model_state()
+                        print("Model updated successfully!")
+                        # Optional: Retrain or validate the model incrementally
+                        dynamic_model_manager.save_model_state()
                     else:
+                        print("Model update failed.")
                         print("Model update failed.")
 
                 except ValueError as e:
@@ -284,12 +378,28 @@ def main():
             elif choice == "4":
                 # Exit the system
                 print("Exiting the Dynamic Recommendation System. Goodbye!")
+                except ValueError as e:
+                    print(f"Input Error: {e}")
+
+            elif choice == "3":
+                # View Model Statistics
+                model_stats = dynamic_model_manager.get_model_stats()
+                print("\n--- Model Statistics ---")
+                for key, value in model_stats.items():
+                    print(f"{key}: {value}")
+
+            elif choice == "4":
+                # Exit the system
+                print("Exiting the Dynamic Recommendation System. Goodbye!")
                 break
+
 
             else:
                 print("Invalid choice. Please enter a number between 1 and 4.")
+                print("Invalid choice. Please enter a number between 1 and 4.")
 
     except Exception as e:
+        logger.error(f"System Error: {e}", exc_info=True)
         logger.error(f"System Error: {e}", exc_info=True)
 
 if __name__ == "__main__":

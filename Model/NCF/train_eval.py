@@ -8,11 +8,8 @@ from .metrics import (
     calculate_rmse,
     calculate_mae,
 )
-import datetime
-from .config import *
-from .models import NCF  # Import the NCF model
-
-
+from config import *
+from torchmetrics.retrieval import RetrievalHitRate, RetrievalNormalizedDCG, RetrievalPrecision, RetrievalRecall
 
 
 def train_model(
@@ -74,7 +71,7 @@ def train_model(
 
             loss = criterion(predictions, ratings)
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
             running_loss += loss.item()
 
@@ -104,10 +101,10 @@ def train_model(
 
         train_losses.append(avg_train_loss)
         test_losses.append(avg_test_loss)
-        hit_rate, ndcg, precision, recall = evaluate_topn(
-            model, test_loader, num_items, top_k=TOP_K, device=DEVICE
-        )
-
+        # hit_rate, ndcg, precision, recall = evaluate_topn(
+            # model, test_loader, num_items, top_k=TOP_K, device=DEVICE
+        # )
+        hit_rate, ndcg, precision, recall = evaluate_recommendations(all_preds, all_targets, TOP_K)
         metrics["hit_rates"].append(hit_rate)
         metrics["ndcgs"].append(ndcg)
         metrics["precisions"].append(precision)
@@ -125,6 +122,21 @@ def train_model(
 
         scheduler.step()
 
+     # Save last epoch's metrics to the config
+    last_epoch_metrics = {
+        "epoch": num_epochs,
+        "train_loss": avg_train_loss,
+        "test_loss": avg_test_loss,
+        "hit_rate": hit_rate,
+        "ndcg": ndcg,
+        "precision": precision,
+        "recall": recall,
+        "rmse": metrics["rmses"][-1],
+        "mae": metrics["maes"][-1],
+    }
+
+    # Save these results to config file
+    # save_config(last_epoch_metrics)
 
     print(f"--------Saving Model to {MODEL_SAVE_PATH}---------")
     # Save model with architecture metadata
@@ -138,24 +150,44 @@ def train_model(
     torch.save(checkpoint, MODEL_SAVE_PATH)
 
     return train_losses, test_losses, metrics
-
-
-def load_ncf_model(model_path, num_users, num_items):
-    """Loads the NCF model with the specified architecture and weights."""
-    model = NCF(num_users, num_items, LATENT_DIM, HIDDEN_LAYERS).to(DEVICE)
-    try:
-        checkpoint = torch.load(model_path, map_location=DEVICE)
-        if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['state_dict'], strict=False)
-        else:
-            model.load_state_dict(checkpoint, strict=False)
-        print("Loaded NCF model from:", model_path)
-    except Exception as e:
-        print(f"Error loading model: {e}. Proceeding with available weights. {e}")
-    return model
-
-
-
+def evaluate_recommendations(preds, target, top_k=10):
+    # Ensure inputs are tensors
+    if not isinstance(preds, torch.Tensor):
+        preds = torch.tensor(preds)
+    if not isinstance(target, torch.Tensor):
+        target = torch.tensor(target)
+    
+    # Create index tensor
+    indexes = torch.arange(len(preds))
+    
+    # Create binary target (items above mean are considered relevant)
+    binary_target = target >= 4
+    
+    # Initialize metrics with reset
+    hit_rate = RetrievalHitRate(top_k=top_k)
+    ndcg = RetrievalNormalizedDCG(top_k=top_k)
+    precision = RetrievalPrecision(top_k=top_k)
+    recall = RetrievalRecall(top_k=top_k)
+    
+    # Explicitly reset metrics before use
+    hit_rate.reset()
+    ndcg.reset()
+    precision.reset()
+    recall.reset()
+    
+    # Update metrics
+    hit_rate.update(preds, binary_target, indexes)
+    ndcg.update(preds, binary_target, indexes)
+    precision.update(preds, binary_target, indexes)
+    recall.update(preds, binary_target, indexes)
+    
+    # Compute metrics
+    hit_rate_value = hit_rate.compute().item()
+    ndcg_value = ndcg.compute().item()
+    precision_value = precision.compute().item()
+    recall_value = recall.compute().item()
+    
+    return hit_rate_value, ndcg_value, precision_value, recall_value
 
 def evaluate_topn(model, test_loader, num_items, top_k, device):
     """Evaluate model using top-K metrics"""
